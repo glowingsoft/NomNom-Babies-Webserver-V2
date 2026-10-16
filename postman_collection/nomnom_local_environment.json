@@ -1,0 +1,38 @@
+{
+  "id": "nomnom-local-env",
+  "name": "NomNom Local Environment",
+  "values": [
+    {
+      "key": "url",
+      "value": "http://localhost:4001/api",
+      "enabled": true
+    },
+    {
+      "key": "token",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "email",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "password",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "phoneNumber",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "otp",
+      "value": "",
+      "enabled": true
+    }
+  ],
+  "timestamp": 0,
+  "synced": false
+}
