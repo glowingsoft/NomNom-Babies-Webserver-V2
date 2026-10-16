@@ -44,6 +44,8 @@ jobs:
             HostName $EC2_HOST
             User $EC2_USER
             IdentityFile ~/.ssh/ec2_key.pem
+            ServerAliveInterval 30
+            ServerAliveCountMax 10
           EOF
 
       - name: Install Node.js, PM2 and Nginx if not installed
