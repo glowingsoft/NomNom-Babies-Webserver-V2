@@ -51,6 +51,21 @@
       "key": "recipeId",
       "value": "",
       "enabled": true
+    },
+    {
+      "key": "sendgridApiKey",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "sendgridSenderEmail",
+      "value": "hello@nomnombabies.com",
+      "enabled": true
+    },
+    {
+      "key": "testEmail",
+      "value": "",
+      "enabled": true
     }
   ],
   "timestamp": 0,

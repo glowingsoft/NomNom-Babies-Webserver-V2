@@ -7083,6 +7083,70 @@
           ]
         }
       ]
+    },
+    {
+      "name": "SendGrid",
+      "item": [
+        {
+          "name": "Send Test Email (SendGrid direct)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"SendGrid accepted the email (202)\", function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sendgridApiKey}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"personalizations\": [\n    {\n      \"to\": [\n        {\n          \"email\": \"{{testEmail}}\"\n        }\n      ],\n      \"subject\": \"Test Email from SendGrid\"\n    }\n  ],\n  \"from\": {\n    \"email\": \"{{sendgridSenderEmail}}\"\n  },\n  \"content\": [\n    {\n      \"type\": \"text/plain\",\n      \"value\": \"Hello! This is a test email sent through SendGrid using Postman.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://api.sendgrid.com/v3/mail/send",
+              "protocol": "https",
+              "host": [
+                "api",
+                "sendgrid",
+                "com"
+              ],
+              "path": [
+                "v3",
+                "mail",
+                "send"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ],
   "auth": {
