@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "291148bd-69be-45b3-a024-dabe883a4492",
-    "name": "MERNBoilerPlateCollection",
+    "name": "nomnombabies",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "3104553"
   },
@@ -67,9 +67,9 @@
                   }
                 },
                 "url": {
-                  "raw": "http://localhost:4001/api/auth/login",
+                  "raw": "{{url}}auth/login",
                   "host": [
-                    "http://localhost:4001/api/auth"
+                    "{{url}}auth"
                   ],
                   "path": [
                     "login"
@@ -233,9 +233,9 @@
                   }
                 },
                 "url": {
-                  "raw": "http://localhost:4001/api/auth/register",
+                  "raw": "{{url}}auth/register",
                   "host": [
-                    "http://localhost:4001/api/auth"
+                    "{{url}}auth"
                   ],
                   "path": [
                     "register"
@@ -1009,6 +1009,138 @@
                   ],
                   "path": [
                     "delete-account"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "forget Password",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}auth/forget-password",
+                  "host": [
+                    "{{url}}auth"
+                  ],
+                  "path": [
+                    "forget-password"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"email\": \"{{email}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "resend Otp (phone)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}auth/resend-otp/phone",
+                  "host": [
+                    "{{url}}auth"
+                  ],
+                  "path": [
+                    "resend-otp",
+                    "phone"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"phoneNumber\": \"{{phoneNumber}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "verify Otp (phone)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}auth/verify-otp/phone",
+                  "host": [
+                    "{{url}}auth"
+                  ],
+                  "path": [
+                    "verify-otp",
+                    "phone"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"phoneNumber\": \"{{phoneNumber}}\",\n    \"otp\": \"{{otp}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "change Password",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}auth/change-password",
+                  "host": [
+                    "{{url}}auth"
+                  ],
+                  "path": [
+                    "change-password"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"currentPassword\": \"123456\",\n    \"newPassword\": \"1234567\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "me",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}auth/me",
+                  "host": [
+                    "{{url}}auth"
+                  ],
+                  "path": [
+                    "me"
                   ]
                 }
               },
@@ -5634,6 +5766,25 @@
                     "admin-panel",
                     "dashboard",
                     "top-countries"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "App Downloads",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}admin/admin-panel/dashboard/app-downloads",
+                  "host": [
+                    "{{url}}admin"
+                  ],
+                  "path": [
+                    "admin-panel",
+                    "dashboard",
+                    "app-downloads"
                   ]
                 }
               },

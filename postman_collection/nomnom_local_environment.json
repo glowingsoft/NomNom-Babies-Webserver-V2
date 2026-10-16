@@ -31,6 +31,26 @@
       "key": "otp",
       "value": "",
       "enabled": true
+    },
+    {
+      "key": "resetToken",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "babyId",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "recipeId",
+      "value": "",
+      "enabled": true
     }
   ],
   "timestamp": 0,
