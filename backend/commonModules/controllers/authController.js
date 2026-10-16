@@ -4,11 +4,7 @@ const moment = require("moment-timezone");
 const Baby = require("@models/Baby");
 const { sendResponse, validateParams } = require("@utils/responseUtil");
 const { formatUserResponse } = require("@utils/userResponseUtil");
-const { sendEmailViaBrevo } = require("@utils/emailUtil");
-const {
-  registrationOtpEmailTemplate,
-  forgotPasswordOtpEmailTemplate,
-} = require("@utils/emailTemplates");
+const { sendOtpEmail } = require("@utils/emailUtil");
 const { createOrSkipDevice, Devices } = require("@models/Devices");
 const validator = require("validator");
 const bcrypt = require("bcryptjs");
@@ -139,6 +135,7 @@ const register = async (req, res) => {
         const otp = existingUser.generateOtp("email", existingUser.timezone);
 
         await existingUser.save();
+        await sendOtpEmail(existingUser.email, otp);
 
         if (deviceId && deviceType) {
           await createOrSkipDevice(existingUser._id, deviceId, deviceType);
@@ -194,6 +191,7 @@ const register = async (req, res) => {
 
     const otp = user.generateOtp("email", timezone);
     await user.save();
+    await sendOtpEmail(user.email, otp);
     if (deviceId && deviceType) {
       await createOrSkipDevice(user._id, deviceId, deviceType);
     }
@@ -294,6 +292,7 @@ const login = async (req, res) => {
       const otp = user.generateOtp("email", user.timezone);
 
       await user.save();
+      await sendOtpEmail(user.email, otp);
 
       return sendResponse({
         res,
@@ -470,9 +469,9 @@ const generateOtp = async (req, res) => {
     await user.save();
 
     // Send email or SMS within the transaction
-    const subject = "Password Reset OTP";
-    const mBody = forgotPasswordOtpEmailTemplate(otp);
-    //await sendEmailViaBrevo([email], subject, mBody);
+    if (type === "email") {
+      await sendOtpEmail(user.email, otp);
+    }
 
     // await session.commitTransaction();
     // session.endSession();
@@ -671,10 +670,7 @@ const forgetPassword = async (req, res) => {
 
     await user.save();
 
-    const subject = "Password Reset OTP";
-    const html = forgotPasswordOtpEmailTemplate(otp);
-
-    await sendEmailViaBrevo([normalizedEmail], subject, html);
+    await sendOtpEmail(normalizedEmail, otp, "forgot-password");
 
     return sendResponse({
       res,

@@ -8,7 +8,7 @@ const {
 var SibApiV3Sdk = require("sib-api-v3-sdk");
 
 // Define the default app name
-const DEFAULT_APP_NAME = "biolderPlate";
+const DEFAULT_APP_NAME = "NomNom Babies";
 
 const sesClient = new SESClient({
   region: process.env.AWS_EMAIL_REGION,
@@ -117,8 +117,7 @@ const sendSmsViaPinpoint = async (phoneNumber, message) => {
   }
 };
 
-// Initialize SendGrid with your API key
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+// The API key is set per send (not at require time): .env may be loaded after this module.
 
 /**
  * Send an email using SendGrid
@@ -134,6 +133,8 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
  */
 const sendEmailViaSgrid = async (title, emails, subject, body, config = {}) => {
   try {
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
     // Set the default title if none is provided
     const emailTitle = title || DEFAULT_APP_NAME;
 
@@ -190,7 +191,37 @@ const sendEmailViaBrevo = async (emails, subject, body, config = {}) => {
 };
 
 
+/**
+ * Email an OTP to a user via SendGrid. Never throws: a mail failure is logged
+ * so it cannot break the API call that generated the OTP.
+ * @param {string} email - Recipient email address
+ * @param {string} otp - The generated OTP (non-string values, e.g. { error }, are ignored)
+ * @param {"verification"|"forgot-password"} [purpose="verification"]
+ * @returns {Promise<boolean>} true if SendGrid accepted the email
+ */
+const sendOtpEmail = async (email, otp, purpose = "verification") => {
+  if (!email || typeof otp !== "string") return false;
+  const {
+    registrationOtpEmailTemplate,
+    forgotPasswordOtpEmailTemplate,
+  } = require("./emailTemplates");
+  const isReset = purpose === "forgot-password";
+  try {
+    await sendEmailViaSgrid(
+      DEFAULT_APP_NAME,
+      [email],
+      isReset ? "Reset your NomNom Babies password" : "Verify your NomNom Babies account",
+      isReset ? forgotPasswordOtpEmailTemplate(otp) : registrationOtpEmailTemplate(otp),
+    );
+    return true;
+  } catch (error) {
+    console.error("Failed to send OTP email:", error?.response?.body || error.message);
+    return false;
+  }
+};
+
 module.exports = {
+  sendOtpEmail,
   sendEmailViaAwsSes,
   sendSmsViaPinpoint,
   sendEmailViaSgrid,

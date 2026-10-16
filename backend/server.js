@@ -117,8 +117,18 @@ app.set("trust proxy", 1);
 app.get("/", (req, res) => {
   res.send("Hello from Node.js!");
 });
-app.get("/favicon.ico", (req, res) => res.status(204).end());
-app.get("/favicon.png", (req, res) => res.status(204).end());
+// Browser-tab icon: drop favicon.ico / favicon.png into backend/assets/favicon/.
+// Falls back to an empty 204 when the file is missing.
+["favicon.ico", "favicon.png"].forEach((file) => {
+  app.get(`/${file}`, (req, res) => {
+    const filePath = path.join(__dirname, "assets", "favicon", file);
+    if (fs.existsSync(filePath)) {
+      res.set("Cache-Control", "public, max-age=86400");
+      return res.sendFile(filePath);
+    }
+    res.status(204).end();
+  });
+});
 
 /**
  * ------------------------------------------------
