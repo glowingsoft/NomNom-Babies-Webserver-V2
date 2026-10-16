@@ -3557,12 +3557,25 @@
                     {
                       "key": "file",
                       "type": "file",
-                      "src": "/Users/s/Desktop/Development/_FreeLancing/samples_mobile/Circle Images/Circle Images/avatars/Mask Group 27.png"
+                      "src": []
                     }
                   ]
                 }
               },
-              "response": []
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                      "var d = pm.response.json().data;",
+                      "if (d && d.file) { pm.environment.set(\"uploadedFile\", d.file); }"
+                    ]
+                  }
+                }
+              ]
             },
             {
               "name": "Get File By Name",
@@ -3570,12 +3583,12 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{url}}upload/sample-file.png",
+                  "raw": "{{url}}upload/{{uploadedFile}}",
                   "host": [
                     "{{url}}upload"
                   ],
                   "path": [
-                    "sample-file.png"
+                    "{{uploadedFile}}"
                   ]
                 }
               },
@@ -3587,13 +3600,13 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{url}}upload/details/sample-file.png",
+                  "raw": "{{url}}upload/details/{{uploadedFile}}",
                   "host": [
                     "{{url}}upload"
                   ],
                   "path": [
                     "details",
-                    "sample-file.png"
+                    "{{uploadedFile}}"
                   ]
                 }
               },

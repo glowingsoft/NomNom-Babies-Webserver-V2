@@ -4,7 +4,7 @@
   "values": [
     {
       "key": "url",
-      "value": "http://localhost:4001/api",
+      "value": "http://localhost:4001/api/",
       "enabled": true
     },
     {
@@ -64,6 +64,11 @@
     },
     {
       "key": "testEmail",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "uploadedFile",
       "value": "",
       "enabled": true
     }
