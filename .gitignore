@@ -135,3 +135,5 @@ backend/secretAssets/
 .yarn/install-state.gz
 .pnp.*
 uploads*
+# macOS
+.DS_Store
