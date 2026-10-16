@@ -21,8 +21,11 @@ if (!fs.existsSync(PM2_LOG_DIR)) {
 module.exports = {
   apps: [
     {
-      name: "boilerplate-backend",
+      // Override per environment so dev and prod can share one host
+      name: process.env.PM2_APP_NAME || "backend-server",
       script: "backend/server.js",
+      // Repo root, so .env.<NODE_ENV> and module aliases resolve correctly
+      cwd: path.resolve(__dirname, "../.."),
 
       exec_mode: "cluster",
       instances: "max",

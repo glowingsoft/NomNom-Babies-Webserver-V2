@@ -1,0 +1,109 @@
+name: CI/CD for Prod Environment
+
+on:
+  push:
+    branches:
+      - main # Run the workflow on every commit to the 'main' branch
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  DEPLOY_DIR: backend-main
+  PM2_APP_NAME: backend-server-prod
+  PM2_ENV: prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          EC2_KEY: ${{ secrets.EC2_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$EC2_KEY" > ~/.ssh/ec2_key.pem
+          chmod 600 ~/.ssh/ec2_key.pem
+
+          # Prefer a pinned host key; fall back to scanning it
+          if [ -n "$EC2_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$EC2_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$EC2_HOST" > ~/.ssh/known_hosts
+          fi
+
+          cat > ~/.ssh/config <<EOF
+          Host ec2
+            HostName $EC2_HOST
+            User $EC2_USER
+            IdentityFile ~/.ssh/ec2_key.pem
+          EOF
+
+      - name: Install Node.js, PM2 and Nginx if not installed
+        run: |
+          ssh ec2 '
+            set -e
+            if ! command -v npm >/dev/null 2>&1; then
+              curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+            fi
+
+            if ! command -v pm2 >/dev/null 2>&1; then
+              sudo npm install -g pm2
+            fi
+
+            if ! command -v nginx >/dev/null 2>&1; then
+              sudo apt-get update -y
+              sudo apt-get install -y nginx
+              sudo systemctl enable nginx
+              sudo systemctl start nginx
+            fi
+
+            node -v
+            npm -v
+            pm2 -v
+          '
+
+      - name: Sync files to EC2
+        run: |
+          ssh ec2 "mkdir -p ~/$DEPLOY_DIR"
+          # Excluded paths live only on the server and are never deleted
+          rsync -az --delete \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude 'node_modules/' \
+            --exclude '.env*' \
+            --exclude 'logs/' \
+            --exclude 'uploads*' \
+            --exclude 'backend/secretAssets/' \
+            ./ ec2:~/$DEPLOY_DIR/
+
+      - name: Upload env file
+        env:
+          ENV_FILE: ${{ secrets.ENV_PROD }}
+        run: |
+          # Optional: if the secret is not set, the existing file on the server is kept
+          if [ -n "$ENV_FILE" ]; then
+            printf '%s\n' "$ENV_FILE" | ssh ec2 "umask 077 && cat > ~/$DEPLOY_DIR/.env.$PM2_ENV"
+          fi
+
+      - name: Install dependencies
+        run: |
+          ssh ec2 "cd ~/$DEPLOY_DIR && npm ci --omit=dev"
+
+      - name: Start or Reload PM2 Service
+        run: |
+          ssh ec2 "
+            set -e
+            cd ~/$DEPLOY_DIR
+            PM2_APP_NAME=$PM2_APP_NAME pm2 startOrReload backend/config/ecosystem.config.js --env $PM2_ENV --update-env
+            pm2 save
+            pm2 list
+          "
