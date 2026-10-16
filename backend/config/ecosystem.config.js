@@ -28,7 +28,7 @@ module.exports = {
       cwd: path.resolve(__dirname, "../.."),
 
       exec_mode: "cluster",
-      instances: "max",
+      instances: process.env.PM2_INSTANCES || 1,
 
       max_memory_restart: "1500M",
       kill_timeout: 8000,
