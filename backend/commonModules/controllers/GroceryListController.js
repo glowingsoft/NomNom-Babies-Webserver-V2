@@ -4,6 +4,7 @@ const Recipe = require("@models/Recipe");
 const { User } = require("@models/UserModel");
 const { babyPopulate } = require("@utils/babyUtil");
 const { logActivity } = require("@utils/activityUtil");
+const { lookupOne, groceryRecipeStages } = require("@utils/aggregationUtil");
 
 const {
   sendResponse,
@@ -145,10 +146,16 @@ const getGroceryList = async (req, res) => {
 
     const { page, limit, skip } = parsePaginationParams(req);
 
-    const groceryList = await GroceryList.findOne({
+    const castedQuery = GroceryList.find({
       user: req.user._id,
       baby: user.activeBaby,
-    }).populate("recipes.recipe", "_id title image");
+    }).cast(GroceryList);
+
+    const [groceryList] = await GroceryList.aggregate([
+      { $match: castedQuery },
+      { $limit: 1 },
+      ...groceryRecipeStages(),
+    ]);
 
     if (!groceryList) {
       return sendResponse({
@@ -645,30 +652,47 @@ const adminGetGroceryLists = async (req, res) => {
       query.user = { $in: matchingUserIds };
     }
 
-    const [groceryLists, totalRecords] = await Promise.all([
-      GroceryList.find(query)
-        .populate("user", "_id name email")
-        .populate("baby", "_id name")
-        .sort({ updatedAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
+    const castedQuery = GroceryList.find(query).cast(GroceryList);
+
+    const [data, totalRecords] = await Promise.all([
+      GroceryList.aggregate([
+        { $match: castedQuery },
+        { $sort: { updatedAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+        ...lookupOne({
+          from: User.collection.name,
+          field: "user",
+          fields: ["_id", "name", "email"],
+        }),
+        ...lookupOne({
+          from: Baby.collection.name,
+          field: "baby",
+          fields: ["_id", "name"],
+        }),
+        {
+          $replaceWith: {
+            _id: "$_id",
+            user: "$user",
+            baby: "$baby",
+            recipesCount: { $size: { $ifNull: ["$recipes", []] } },
+            itemsCount: {
+              $sum: {
+                $map: {
+                  input: { $ifNull: ["$recipes", []] },
+                  as: "r",
+                  in: { $size: { $ifNull: ["$$r.ingredients", []] } },
+                },
+              },
+            },
+            createdAt: "$createdAt",
+            updatedAt: "$updatedAt",
+          },
+        },
+      ]),
 
       GroceryList.countDocuments(query),
     ]);
-
-    const data = groceryLists.map((list) => ({
-      _id: list._id,
-      user: list.user,
-      baby: list.baby,
-      recipesCount: list.recipes.length,
-      itemsCount: list.recipes.reduce(
-        (sum, r) => sum + (r.ingredients?.length || 0),
-        0,
-      ),
-      createdAt: list.createdAt,
-      updatedAt: list.updatedAt,
-    }));
 
     return sendResponse({
       res,
@@ -698,10 +722,25 @@ const adminGetGroceryListById = async (req, res) => {
       return;
     }
 
-    const groceryList = await GroceryList.findById(req.params.id)
-      .populate("user", "_id name email")
-      .populate("baby", "_id name")
-      .populate("recipes.recipe", "_id title image");
+    const castedQuery = GroceryList.find({ _id: req.params.id }).cast(
+      GroceryList,
+    );
+
+    const [groceryList] = await GroceryList.aggregate([
+      { $match: castedQuery },
+      { $limit: 1 },
+      ...lookupOne({
+        from: User.collection.name,
+        field: "user",
+        fields: ["_id", { name: "name", default: "" }, "email"],
+      }),
+      ...lookupOne({
+        from: Baby.collection.name,
+        field: "baby",
+        fields: ["_id", "name"],
+      }),
+      ...groceryRecipeStages(),
+    ]);
 
     if (!groceryList) {
       return sendResponse({

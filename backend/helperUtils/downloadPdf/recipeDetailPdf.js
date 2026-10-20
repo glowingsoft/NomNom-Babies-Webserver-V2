@@ -9,12 +9,27 @@ const {
   FONT_SIZES,
 } = require("./constants");
 
-const { drawHeader, ensureSpace, sectionTitle, infoCard } = require("./layout");
+const {
+  drawHeader,
+  ensureSpace,
+  addFooters,
+  sectionTitle,
+  infoCard,
+  calloutBox,
+} = require("./layout");
+const { getLogo } = require("./logo");
 const { chipRow, drawDivider } = require("./helpers");
 
-const generateRecipePdf = (recipe) => {
+const generateRecipePdf = async (recipe) => {
+  const logo = await getLogo();
+
   return new Promise((resolve) => {
-    const doc = new PDFDocument({ margin: MARGIN });
+    const doc = new PDFDocument({
+      margin: MARGIN,
+      size: "A4",
+      bufferPages: true,
+    });
+    doc._pdfLogo = logo ? doc.openImage(logo) : null;
 
     const buffers = [];
     doc.on("data", buffers.push.bind(buffers));
@@ -25,8 +40,8 @@ const generateRecipePdf = (recipe) => {
     doc.moveDown();
 
     infoCard(doc, [
-      ["Meal Type", recipe.mealType],
-      ["Prep Time", recipe.prepTime],
+      ["Meal Type", recipe.mealType || "-"],
+      ["Prep Time", recipe.prepTime ? `${recipe.prepTime} min` : "-"],
       ["Country", recipe.country?.name || "-"],
       ["Stage", recipe.stage?.title || "-"],
     ]);
@@ -78,11 +93,29 @@ const generateRecipePdf = (recipe) => {
           .font("Helvetica")
           .text(step.description || "", 80, y, { width: 430 });
 
-        doc.moveDown(1);
+        doc.moveDown(0.7);
+      });
+    }
+
+    if (recipe.feedingInsight) {
+      calloutBox(doc, "Feeding Insight", recipe.feedingInsight, {
+        fill: "#FFF4EE",
+        stroke: PRIMARY,
+        color: PRIMARY,
+      });
+    }
+
+    if (recipe.allergyReminder) {
+      calloutBox(doc, "Allergy Reminder", recipe.allergyReminder, {
+        fill: "#FEF2F2",
+        stroke: "#DC2626",
+        color: "#DC2626",
       });
     }
 
     if (recipe.acceptanceLabel) {
+      ensureSpace(doc, 80);
+
       sectionTitle(doc, "Acceptance");
 
       const y = doc.y;
@@ -108,6 +141,7 @@ const generateRecipePdf = (recipe) => {
         .text(recipe.notes, MARGIN, doc.y, { width: CONTENT_WIDTH });
     }
 
+    addFooters(doc);
     doc.end();
   });
 };

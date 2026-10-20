@@ -20,6 +20,13 @@ const Subscription = require("@models/Subscription");
 const FeedingLog = require("@models/FeedingLog");
 const FeedingSchedule = require("@models/FeedingSchedule");
 const GroceryList = require("@models/GroceryList");
+const Country = require("@models/Country");
+const BabyStage = require("@models/BabyStage");
+const {
+  lookupOne,
+  lookupMany,
+  leanGroceryRecipeStages,
+} = require("@utils/aggregationUtil");
 const currenciesFilePath = path.join(
   process.cwd(),
   "backend/assets/currencies/currencies.json",
@@ -63,14 +70,25 @@ const allUsers = async (req, res) => {
       query["onboarding.selectedCountries"] = country;
     }
 
+    const castedUserQuery = User.find(query).cast(User);
+
     const [users, totalRecords] = await Promise.all([
-      User.find(query)
-        .select("-password -resetToken -otpInfo")
-        .populate("onboarding.selectedCountries", "_id name")
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * Number(limit))
-        .limit(Number(limit))
-        .lean(),
+      User.aggregate([
+        { $match: castedUserQuery },
+        { $sort: { createdAt: -1 } },
+        ...(Number.isNaN((page - 1) * Number(limit))
+          ? []
+          : [{ $skip: (page - 1) * Number(limit) }]),
+        ...(Number(limit) ? [{ $limit: Math.abs(Number(limit)) }] : []),
+        {
+          $project: {
+            name: 1,
+            email: 1,
+            profileIcon: 1,
+            "accountState.status": 1,
+          },
+        },
+      ]),
 
       User.countDocuments(query),
     ]);
@@ -78,19 +96,19 @@ const allUsers = async (req, res) => {
     const userIds = users.map((user) => user._id);
 
     const [babies, groceryLists] = await Promise.all([
-      Baby.find({
-        user: { $in: userIds },
-      })
+      Baby.aggregate([
+        { $match: { user: { $in: userIds } } },
+        ...lookupMany({
+          from: Country.collection.name,
+          field: "selectedCountries",
+          fields: ["_id", "name"],
+        }),
+      ]),
 
-        .populate("selectedCountries", "_id name")
-        .lean(),
-
-      GroceryList.find({
-        user: { $in: userIds },
-      })
-        .select("-recipes.ingredients.checked")
-        .populate("recipes.recipe", "_id title image icon")
-        .lean(),
+      GroceryList.aggregate([
+        { $match: { user: { $in: userIds } } },
+        ...leanGroceryRecipeStages(),
+      ]),
     ]);
 
     const groceryListMap = {};
@@ -172,7 +190,6 @@ const getUserById = async (req, res) => {
 
     const user = await User.findById(id)
       .select("-password -resetToken -otpInfo")
-      .populate("onboarding.selectedCountries", "_id name")
       .lean();
 
     if (!user) {
@@ -186,19 +203,26 @@ const getUserById = async (req, res) => {
     const [
       babies,
       recipes,
-      feedingSchedule,
-      feedingLogs,
       favoriteRecipes,
       subscriptions,
       supportQuestions,
       groceryList,
     ] = await Promise.all([
-      Baby.find({
-        user: user._id,
-      })
-        .populate("selectedCountries", "_id name")
-        .populate("babyStage", "_id title")
-        .lean(),
+      Baby.aggregate([
+        { $match: { user: user._id } },
+        ...lookupMany({
+          from: Country.collection.name,
+          field: "selectedCountries",
+          fields: ["_id", "name"],
+          lean: true,
+        }),
+        ...lookupOne({
+          from: BabyStage.collection.name,
+          field: "babyStage",
+          fields: ["_id", "title"],
+          lean: true,
+        }),
+      ]),
       Recipe.find({
         user: user._id,
       })
@@ -207,21 +231,15 @@ const getUserById = async (req, res) => {
         .sort({ updatedAt: -1 })
         .lean(),
 
-      FeedingSchedule.find({
-        user: id,
-      })
-        .populate("baby", "name")
-        .lean(),
-
-      FeedingLog.find({
-        user: user._id,
-      }).lean(),
-
-      FavoriteRecipe.find({
-        user: user._id,
-      })
-        .populate("recipe", "title image")
-        .lean(),
+      FavoriteRecipe.aggregate([
+        { $match: { user: user._id } },
+        ...lookupOne({
+          from: Recipe.collection.name,
+          field: "recipe",
+          fields: ["_id", "title", "image"],
+          lean: true,
+        }),
+      ]),
 
       Subscription.find({
         user: user._id,
@@ -235,13 +253,17 @@ const getUserById = async (req, res) => {
         .sort({ createdAt: -1 })
         .lean(),
 
-      GroceryList.findOne({
-        user: user._id,
-      })
-        .select("-recipes.ingredients.checked")
-        .populate("baby", "name")
-        .populate("recipes.recipe", "_id title image icon")
-        .lean(),
+      GroceryList.aggregate([
+        { $match: { user: user._id } },
+        { $limit: 1 },
+        ...lookupOne({
+          from: Baby.collection.name,
+          field: "baby",
+          fields: ["_id", "name"],
+          lean: true,
+        }),
+        ...leanGroceryRecipeStages(),
+      ]).then(([list]) => list ?? null),
     ]);
 
     const timetables = await FeedingSchedule.aggregate([

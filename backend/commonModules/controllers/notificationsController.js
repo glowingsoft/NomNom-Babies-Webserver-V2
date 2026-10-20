@@ -5,17 +5,35 @@ const {
 } = require("@utils/responseUtil");
 const moment = require("moment-timezone");
 const { NotificationExp } = require("@models/Notifications");
+const { User } = require("@models/UserModel");
+const { lookupOne } = require("@utils/aggregationUtil");
 
 const getNotifications = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
 
   try {
+    const castedQuery = NotificationExp.find({
+      receiverId: req.user._id,
+    }).cast(NotificationExp);
+
     const [notifications, totalNotifications] = await Promise.all([
-      NotificationExp.find({ receiverId: req.user._id })
-        .populate("subjectId", "_id name profileIcon")
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+      NotificationExp.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...lookupOne({
+          from: User.collection.name,
+          field: "subjectId",
+          fields: [
+            "_id",
+            { name: "name", default: "" },
+            { name: "profileIcon", default: "" },
+          ],
+        }),
+        { $addFields: { isRead: { $ifNull: ["$isRead", false] } } },
+        { $unset: "data" },
+      ]),
       NotificationExp.countDocuments({ receiverId: req.user._id }),
     ]);
 

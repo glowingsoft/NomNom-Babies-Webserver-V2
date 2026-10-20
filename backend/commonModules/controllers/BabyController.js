@@ -10,6 +10,10 @@ const {
 } = require("@utils/responseUtil");
 const { getBabyInfo, babyPopulate } = require("@utils/babyUtil");
 const { logActivity } = require("@utils/activityUtil");
+const {
+  babyPopulateStages,
+  babyDocumentDefaults,
+} = require("@utils/aggregationUtil");
 const { sendUserNotifications } = require("./communicationController");
 const { NotificationTypes } = require("@models/Notifications");
 
@@ -131,12 +135,16 @@ const getBabies = async (req, res) => {
       user: req.user._id,
       isActive: true,
     };
+    const castedQuery = Baby.find(query).cast(Baby);
     const [babies, totalRecords] = await Promise.all([
-      Baby.find(query)
-        .populate(babyPopulate)
-        .sort({ createdAt: 1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+      Baby.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: 1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...babyPopulateStages(),
+        { $addFields: babyDocumentDefaults },
+      ]),
 
       Baby.countDocuments(query),
     ]);
@@ -181,12 +189,17 @@ const getUserBabies = async (req, res) => {
       isActive: true,
     };
 
+    const castedQuery = Baby.find(query).cast(Baby);
+
     const [babies, totalRecords] = await Promise.all([
-      Baby.find(query)
-        .populate(babyPopulate)
-        .sort({ createdAt: 1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+      Baby.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: 1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...babyPopulateStages(),
+        { $addFields: babyDocumentDefaults },
+      ]),
 
       Baby.countDocuments(query),
     ]);
@@ -217,11 +230,18 @@ const getBabyById = async (req, res) => {
     )
       return;
 
-    const baby = await Baby.findOne({
+    const castedQuery = Baby.find({
       _id: req.params.id,
       user: req.user._id,
       isActive: true,
-    }).populate(babyPopulate);
+    }).cast(Baby);
+
+    const [baby] = await Baby.aggregate([
+      { $match: castedQuery },
+      { $limit: 1 },
+      ...babyPopulateStages(),
+      { $addFields: babyDocumentDefaults },
+    ]);
 
     if (!baby) {
       return sendResponse({

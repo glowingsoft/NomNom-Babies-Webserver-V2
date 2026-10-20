@@ -8,8 +8,9 @@ const {
   generateMeta,
   validateParams,
 } = require("@utils/responseUtil");
-const { getBabyInfo, babyPopulate } = require("@utils/babyUtil");
+const { getBabyInfo } = require("@utils/babyUtil");
 const { logActivity } = require("@utils/activityUtil");
+const { babyPopulateStages, lookupOne } = require("@utils/aggregationUtil");
 
 const getFeedingTimetable = async (req, res) => {
   try {
@@ -27,7 +28,10 @@ const getFeedingTimetable = async (req, res) => {
       });
     }
 
-    const baby = await Baby.findById(user.activeBaby).populate(babyPopulate);
+    const [baby] = await Baby.aggregate([
+      { $match: { _id: user.activeBaby } },
+      ...babyPopulateStages(),
+    ]);
 
     if (!baby) {
       return sendResponse({
@@ -74,7 +78,7 @@ const getFeedingTimetable = async (req, res) => {
 
       badge: meal.completed
         ? "completed"
-        : nextMeal && String(meal.id) === String(nextMeal.id)
+        : nextMeal && String(meal._id) === String(nextMeal._id)
           ? "upnext"
           : null,
     }));
@@ -124,7 +128,16 @@ const getFeedingTimetable = async (req, res) => {
 
 const getTimetables = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).populate("activeBaby");
+    const castedUser = User.find({ _id: req.user._id }).cast(User);
+
+    const [user] = await User.aggregate([
+      { $match: castedUser },
+      ...lookupOne({
+        from: Baby.collection.name,
+        field: "activeBaby",
+        fields: ["_id", "name"],
+      }),
+    ]);
 
     if (!user?.activeBaby) {
       return sendResponse({
@@ -137,7 +150,7 @@ const getTimetables = async (req, res) => {
     const { page, limit, skip } = parsePaginationParams(req);
 
     const query = {
-      baby: user.activeBaby,
+      baby: user.activeBaby._id,
       user: req.user._id,
     };
 
@@ -186,18 +199,35 @@ const getTimetableDetail = async (req, res) => {
   try {
     if (!validateParams(req, res, { queryParams: ["date"] })) return;
     const { date } = req.query;
-    const user = await User.findById(req.user._id).populate("activeBaby");
+    const castedUser = User.find({ _id: req.user._id }).cast(User);
 
-    const baby = await Baby.findById(user.activeBaby).populate(babyPopulate);
+    const user =
+      (
+        await User.aggregate([
+          { $match: castedUser },
+          ...lookupOne({
+            from: Baby.collection.name,
+            field: "activeBaby",
+            fields: ["_id"],
+          }),
+        ])
+      )[0] ?? null;
+
+    const activeBabyId = user.activeBaby ? user.activeBaby._id : null;
+
+    const [baby] = await Baby.aggregate([
+      { $match: { _id: activeBabyId } },
+      ...babyPopulateStages(),
+    ]);
 
     const schedules = await FeedingSchedule.find({
-      baby: user.activeBaby,
+      baby: activeBabyId,
       user: req.user._id,
       date,
     }).sort({ time: 1 });
 
     const logs = await FeedingLog.find({
-      baby: user.activeBaby,
+      baby: activeBabyId,
       user: req.user._id,
       date,
     });

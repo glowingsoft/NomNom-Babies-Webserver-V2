@@ -9,6 +9,7 @@ const { sendResponse } = require("@utils/responseUtil");
 const Baby = require("@models/Baby");
 const { Devices } = require("@models/Devices");
 const Meals = require("@models/Meals");
+const { lookupOne } = require("@utils/aggregationUtil");
 
 const dashboard = async (req, res) => {
   try {
@@ -214,14 +215,42 @@ const platformGrowthTrend = async (req, res) => {
   }
 };
 
+const minimizeEmptyObjects = (value) => {
+  if (!value || value.constructor !== Object) return value;
+  for (const key of Object.keys(value)) {
+    const child = minimizeEmptyObjects(value[key]);
+    if (child === undefined) delete value[key];
+    else value[key] = child;
+  }
+  return Object.keys(value).length ? value : undefined;
+};
+
 const recentActivities = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit, 10) || 5;
 
-    const activities = await Activity.find()
-      .populate("user", "_id name email")
-      .sort({ createdAt: -1 })
-      .limit(limit);
+    const activities = await Activity.aggregate([
+      { $sort: { createdAt: -1 } },
+      { $limit: Math.abs(limit) },
+      ...lookupOne({
+        from: User.collection.name,
+        field: "user",
+        fields: ["_id", { name: "name", default: "" }, "email"],
+      }),
+      {
+        $addFields: {
+          baby: { $ifNull: ["$baby", null] },
+          targetId: { $ifNull: ["$targetId", null] },
+        },
+      },
+    ]);
+
+    activities.forEach((activity) => {
+      if (activity.metadata === undefined) return;
+      const minimized = minimizeEmptyObjects(activity.metadata);
+      if (minimized === undefined) delete activity.metadata;
+      else activity.metadata = minimized;
+    });
 
     return sendResponse({
       res,

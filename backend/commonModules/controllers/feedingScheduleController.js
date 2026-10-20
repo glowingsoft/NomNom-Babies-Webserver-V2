@@ -10,6 +10,12 @@ const Baby = require("@models/Baby");
 const mongoose = require("mongoose");
 const { User } = require("@models/UserModel");
 const { logActivity } = require("@utils/activityUtil");
+const { lookupOne } = require("@utils/aggregationUtil");
+
+const feedingScheduleDefaults = {
+  description: { $ifNull: ["$description", ""] },
+  isOptional: { $ifNull: ["$isOptional", false] },
+};
 
 const getFeedingSchedule = async (req, res) => {
   try {
@@ -354,11 +360,20 @@ const getUserFeedingSchedules = async (req, res) => {
 
     const totalRecords = await FeedingSchedule.countDocuments(query);
 
-    const schedules = await FeedingSchedule.find(query)
-      .populate("baby", "_id name")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    const castedQuery = FeedingSchedule.find(query).cast(FeedingSchedule);
+
+    const schedules = await FeedingSchedule.aggregate([
+      { $match: castedQuery },
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      ...lookupOne({
+        from: Baby.collection.name,
+        field: "baby",
+        fields: ["_id", "name"],
+      }),
+      { $addFields: feedingScheduleDefaults },
+    ]);
 
     return sendResponse({
       res,
@@ -396,11 +411,20 @@ const getUserBabyFeedingSchedule = async (req, res) => {
 
     const totalRecords = await FeedingSchedule.countDocuments(query);
 
-    const schedule = await FeedingSchedule.find(query)
-      .populate("baby", "_id name")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    const castedQuery = FeedingSchedule.find(query).cast(FeedingSchedule);
+
+    const schedule = await FeedingSchedule.aggregate([
+      { $match: castedQuery },
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      ...lookupOne({
+        from: Baby.collection.name,
+        field: "baby",
+        fields: ["_id", "name"],
+      }),
+      { $addFields: feedingScheduleDefaults },
+    ]);
 
     if (!schedule) {
       return sendResponse({

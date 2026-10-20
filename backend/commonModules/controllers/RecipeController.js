@@ -1,6 +1,14 @@
 const mongoose = require("mongoose");
 const Recipe = require("@models/Recipe");
 const Nutrition = require("@models/Nutrition");
+const Country = require("@models/Country");
+const BabyStage = require("@models/BabyStage");
+const Meals = require("@models/Meals");
+const {
+  lookupOne,
+  lookupMany,
+  recipeDocumentDefaults,
+} = require("@utils/aggregationUtil");
 const {
   sendResponse,
   validateParams,
@@ -9,7 +17,6 @@ const {
 } = require("@utils/responseUtil");
 const Baby = require("@models/Baby");
 const { User } = require("@models/UserModel");
-const { babyPopulate } = require("@utils/babyUtil");
 const FavoriteRecipe = require("@models/FavoriteRecipe");
 const GroceryList = require("@models/GroceryList");
 const { logActivity } = require("@utils/activityUtil");
@@ -84,35 +91,43 @@ const getRecipes = async (req, res) => {
       };
     }
 
+    const castedQuery = Recipe.find(query).cast(Recipe);
+
     const [recipes, totalRecords] = await Promise.all([
-      Recipe.find(query)
-
-        .populate("country", "_id name")
-
-        .populate("babyStage", "_id title")
-
-        .populate("nutritionTags", "_id name benefit")
-
-        .select(
-          `
-            title
-            icon
-            image
-            prepTime
-            mealType
-            nutritionTags
-            country
-            babyStage
-          `,
-        )
-
-        .sort({
-          createdAt: -1,
-        })
-
-        .skip((page - 1) * limit)
-
-        .limit(limit),
+      Recipe.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...lookupOne({
+          from: Country.collection.name,
+          field: "country",
+          fields: ["_id", "name"],
+        }),
+        ...lookupOne({
+          from: BabyStage.collection.name,
+          field: "babyStage",
+          fields: ["_id", "title"],
+        }),
+        ...lookupMany({
+          from: Nutrition.collection.name,
+          field: "nutritionTags",
+          fields: ["_id", "name", "benefit"],
+        }),
+        {
+          $replaceWith: {
+            _id: "$_id",
+            title: "$title",
+            image: { $ifNull: ["$image", ""] },
+            icon: { $ifNull: ["$icon", ""] },
+            prepTime: "$prepTime",
+            country: "$country",
+            babyStage: "$babyStage",
+            mealType: "$mealType",
+            nutritionTags: "$nutritionTags",
+          },
+        },
+      ]),
 
       Recipe.countDocuments(query),
     ]);
@@ -152,14 +167,58 @@ const getRecipeById = async (req, res) => {
       return;
     }
 
-    const recipe = await Recipe.findOne({
+    const castedQuery = Recipe.find({
       _id: req.params.id,
       status: "published",
       isActive: true,
-    })
-      .populate("country", "_id name")
-      .populate("babyStage", "_id title features")
-      .populate("nutritionTags", "_id name benefit");
+    }).cast(Recipe);
+
+    const [recipe] = await Recipe.aggregate([
+      { $match: castedQuery },
+      { $limit: 1 },
+      ...lookupOne({
+        from: Country.collection.name,
+        field: "country",
+        fields: ["_id", "name"],
+      }),
+      ...lookupOne({
+        from: BabyStage.collection.name,
+        field: "babyStage",
+        fields: ["_id", "title"],
+      }),
+      ...lookupMany({
+        from: Nutrition.collection.name,
+        field: "nutritionTags",
+        fields: ["_id", "name", "benefit"],
+      }),
+      {
+        $addFields: {
+          icon: { $ifNull: ["$icon", ""] },
+          image: { $ifNull: ["$image", ""] },
+          feedingInsight: { $ifNull: ["$feedingInsight", ""] },
+          allergyReminder: { $ifNull: ["$allergyReminder", ""] },
+          notes: { $ifNull: ["$notes", ""] },
+          acceptanceLabel: { $ifNull: ["$acceptanceLabel", ""] },
+          method: { $ifNull: ["$method", []] },
+          ingredients: {
+            $map: {
+              input: { $ifNull: ["$ingredients", []] },
+              as: "ing",
+              in: {
+                $mergeObjects: [
+                  "$$ing",
+                  {
+                    quantity: { $ifNull: ["$$ing.quantity", ""] },
+                    icon: { $ifNull: ["$$ing.icon", ""] },
+                    category: { $ifNull: ["$$ing.category", ""] },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    ]);
 
     if (!recipe) {
       return sendResponse({
@@ -388,14 +447,36 @@ const getBabyRecipes = async (req, res) => {
       baby: baby._id,
     }).distinct("recipe");
 
+    const castedQuery = Recipe.find(query).cast(Recipe);
+
     const [recipes, totalRecords] = await Promise.all([
-      Recipe.find(query)
-        .populate("country", "_id name")
-        .populate("babyStage", "_id title")
-        .populate("nutritionTags", "_id name benefit")
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+      Recipe.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...lookupOne({
+          from: Country.collection.name,
+          field: "country",
+          fields: ["_id", "name"],
+        }),
+        ...lookupOne({
+          from: BabyStage.collection.name,
+          field: "babyStage",
+          fields: ["_id", "title"],
+        }),
+        ...lookupMany({
+          from: Nutrition.collection.name,
+          field: "nutritionTags",
+          fields: ["_id", "name", "benefit"],
+        }),
+        {
+          $addFields: {
+            icon: { $ifNull: ["$icon", ""] },
+            image: { $ifNull: ["$image", ""] },
+          },
+        },
+      ]),
 
       Recipe.countDocuments(query),
     ]);
@@ -459,7 +540,19 @@ const getCustomCulturalPicks = async (req, res) => {
       });
     }
 
-    const baby = await Baby.findById(user.activeBaby).populate(babyPopulate);
+    const [baby] = await Baby.aggregate([
+      { $match: { _id: user.activeBaby } },
+      ...lookupOne({
+        from: BabyStage.collection.name,
+        field: "babyStage",
+        fields: ["_id"],
+      }),
+      ...lookupMany({
+        from: Country.collection.name,
+        field: "selectedCountries",
+        fields: ["_id"],
+      }),
+    ]);
 
     if (!baby) {
       return sendResponse({
@@ -480,14 +573,26 @@ const getCustomCulturalPicks = async (req, res) => {
       status: "published",
     };
 
+    const castedQuery = Recipe.find(query).cast(Recipe);
+
     const [recipes, totalRecords] = await Promise.all([
-      Recipe.find(query)
-        .populate("country", "_id name")
-        .sort({
-          createdAt: -1,
-        })
-        .skip(skip)
-        .limit(limit),
+      Recipe.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+        ...lookupOne({
+          from: Country.collection.name,
+          field: "country",
+          fields: ["_id", "name"],
+        }),
+        {
+          $addFields: {
+            icon: { $ifNull: ["$icon", ""] },
+            image: { $ifNull: ["$image", ""] },
+          },
+        },
+      ]),
 
       Recipe.countDocuments(query),
     ]);
@@ -531,15 +636,36 @@ const adminGetRecipes = async (req, res) => {
     if (countryId) query.country = countryId;
     if (stageId) query.babyStage = stageId;
 
+    const castedQuery = Recipe.find(query).cast(Recipe);
+
     const [recipes, totalRecords] = await Promise.all([
-      Recipe.find(query)
-        .populate("country", "_id name")
-        .populate("babyStage", "_id title")
-        .populate("mealType", "_id name")
-        .populate("nutritionTags", "_id name benefit")
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+      Recipe.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...lookupOne({
+          from: Country.collection.name,
+          field: "country",
+          fields: ["_id", "name"],
+        }),
+        ...lookupOne({
+          from: BabyStage.collection.name,
+          field: "babyStage",
+          fields: ["_id", "title"],
+        }),
+        ...lookupOne({
+          from: Meals.collection.name,
+          field: "mealType",
+          fields: ["_id", "name"],
+        }),
+        ...lookupMany({
+          from: Nutrition.collection.name,
+          field: "nutritionTags",
+          fields: ["_id", "name", "benefit"],
+        }),
+        { $addFields: recipeDocumentDefaults },
+      ]),
       Recipe.countDocuments(query),
     ]);
 
@@ -573,11 +699,33 @@ const adminGetRecipeById = async (req, res) => {
       return;
     }
 
-    const recipe = await Recipe.findById(req.params.id)
-      .populate("country", "_id name")
-      .populate("babyStage", "_id title")
-      .populate("mealType", "_id name")
-      .populate("nutritionTags", "_id name benefit");
+    const castedQuery = Recipe.find({ _id: req.params.id }).cast(Recipe);
+
+    const [recipe] = await Recipe.aggregate([
+      { $match: castedQuery },
+      { $limit: 1 },
+      ...lookupOne({
+        from: Country.collection.name,
+        field: "country",
+        fields: ["_id", "name"],
+      }),
+      ...lookupOne({
+        from: BabyStage.collection.name,
+        field: "babyStage",
+        fields: ["_id", "title"],
+      }),
+      ...lookupOne({
+        from: Meals.collection.name,
+        field: "mealType",
+        fields: ["_id", "name"],
+      }),
+      ...lookupMany({
+        from: Nutrition.collection.name,
+        field: "nutritionTags",
+        fields: ["_id", "name", "benefit"],
+      }),
+      { $addFields: recipeDocumentDefaults },
+    ]);
 
     if (!recipe) {
       return sendResponse({
