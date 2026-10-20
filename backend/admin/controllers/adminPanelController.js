@@ -338,12 +338,47 @@ const downloadsByType = async (req, res) => {
 
 const topViewedRecipes = async (req, res) => {
   try {
-    const recipes = await Recipe.find({ status: "published" })
-      .populate("country", "_id name")
-      .populate("mealType", "_id name")
-      .sort({ views: -1, createdAt: -1 })
-      .limit(10)
-      .select("title mealType views");
+    const refField = (field) => ({
+      $cond: [
+        { $ifNull: [`$${field}._id`, false] },
+        { _id: `$${field}._id`, name: `$${field}.name` },
+        null,
+      ],
+    });
+
+    const recipes = await Recipe.aggregate([
+      { $match: { status: "published" } },
+      { $addFields: { views: { $ifNull: ["$views", 0] } } },
+      { $sort: { views: -1, createdAt: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: Country.collection.name,
+          localField: "country",
+          foreignField: "_id",
+          as: "country",
+        },
+      },
+      { $unwind: { path: "$country", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: Meals.collection.name,
+          localField: "mealType",
+          foreignField: "_id",
+          as: "mealType",
+        },
+      },
+      { $unwind: { path: "$mealType", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: 1,
+          title: 1,
+          views: 1,
+          country: refField("country"),
+          mealType: refField("mealType"),
+        },
+      },
+    ]);
 
     return sendResponse({ res, statusCode: 200, data: recipes });
   } catch (error) {
