@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "291148bd-69be-45b3-a024-dabe883a4492",
-    "name": "MERNBoilerPlateCollection",
+    "name": "nomnombabies",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "3104553"
   },
@@ -67,9 +67,9 @@
                   }
                 },
                 "url": {
-                  "raw": "http://localhost:4001/api/auth/login",
+                  "raw": "{{url}}auth/login",
                   "host": [
-                    "http://localhost:4001/api/auth"
+                    "{{url}}auth"
                   ],
                   "path": [
                     "login"
@@ -233,9 +233,9 @@
                   }
                 },
                 "url": {
-                  "raw": "http://localhost:4001/api/auth/register",
+                  "raw": "{{url}}auth/register",
                   "host": [
-                    "http://localhost:4001/api/auth"
+                    "{{url}}auth"
                   ],
                   "path": [
                     "register"
@@ -1009,6 +1009,138 @@
                   ],
                   "path": [
                     "delete-account"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "forget Password",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}auth/forget-password",
+                  "host": [
+                    "{{url}}auth"
+                  ],
+                  "path": [
+                    "forget-password"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"email\": \"{{email}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "resend Otp (phone)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}auth/resend-otp/phone",
+                  "host": [
+                    "{{url}}auth"
+                  ],
+                  "path": [
+                    "resend-otp",
+                    "phone"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"phoneNumber\": \"{{phoneNumber}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "verify Otp (phone)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}auth/verify-otp/phone",
+                  "host": [
+                    "{{url}}auth"
+                  ],
+                  "path": [
+                    "verify-otp",
+                    "phone"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"phoneNumber\": \"{{phoneNumber}}\",\n    \"otp\": \"{{otp}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "change Password",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}auth/change-password",
+                  "host": [
+                    "{{url}}auth"
+                  ],
+                  "path": [
+                    "change-password"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"currentPassword\": \"123456\",\n    \"newPassword\": \"1234567\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "me",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}auth/me",
+                  "host": [
+                    "{{url}}auth"
+                  ],
+                  "path": [
+                    "me"
                   ]
                 }
               },
@@ -3425,12 +3557,25 @@
                     {
                       "key": "file",
                       "type": "file",
-                      "src": "/Users/s/Desktop/Development/_FreeLancing/samples_mobile/Circle Images/Circle Images/avatars/Mask Group 27.png"
+                      "src": []
                     }
                   ]
                 }
               },
-              "response": []
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test(\"Status 200\", function () { pm.response.to.have.status(200); });",
+                      "var d = pm.response.json().data;",
+                      "if (d && d.file) { pm.environment.set(\"uploadedFile\", d.file); }"
+                    ]
+                  }
+                }
+              ]
             },
             {
               "name": "Get File By Name",
@@ -3438,12 +3583,12 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{url}}upload/sample-file.png",
+                  "raw": "{{url}}upload/{{uploadedFile}}",
                   "host": [
                     "{{url}}upload"
                   ],
                   "path": [
-                    "sample-file.png"
+                    "{{uploadedFile}}"
                   ]
                 }
               },
@@ -3455,13 +3600,13 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "{{url}}upload/details/sample-file.png",
+                  "raw": "{{url}}upload/details/{{uploadedFile}}",
                   "host": [
                     "{{url}}upload"
                   ],
                   "path": [
                     "details",
-                    "sample-file.png"
+                    "{{uploadedFile}}"
                   ]
                 }
               },
@@ -4133,9 +4278,25 @@
                     "s3"
                   ]
                 },
-                "description": "Uploading single/multiple files is possible"
+                "description": "Uploads single/multiple images (form-data field \"files\", max 20; jpeg, jpg, png, gif, bmp, tiff, webp). Files are stored in a private S3 bucket. The response fileUrl points to the backend media endpoint ({{S3_BASE_URL}}/<key>), which serves the image through a short-lived presigned S3 URL."
               },
-              "response": []
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const data = body.data;",
+                      "const first = Array.isArray(data) ? data[0] : data;",
+                      "if (pm.response.code === 200 && first && first.file) {",
+                      "    pm.environment.set(\"uploadedFile\", first.file);",
+                      "}"
+                    ]
+                  }
+                }
+              ]
             },
             {
               "name": "Delete file s3",
@@ -4200,6 +4361,24 @@
                     "s3"
                   ]
                 }
+              },
+              "response": []
+            },
+            {
+              "name": "Get media file (presigned redirect)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}media/{{uploadedFile}}",
+                  "host": [
+                    "{{url}}media"
+                  ],
+                  "path": [
+                    "{{uploadedFile}}"
+                  ]
+                },
+                "description": "Public endpoint, no auth. Redirects (302) to a short-lived presigned S3 URL, so it can be used directly as an <img src>. Key = the \"file\" value returned by Upload file s3. Postman follows the redirect and shows the image."
               },
               "response": []
             }
@@ -5438,6 +5617,37 @@
           "name": "Dashboard",
           "item": [
             {
+              "name": "Dashboard (all sections)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}admin/admin-panel/dashboard?topN=5&limit=5",
+                  "host": [
+                    "{{url}}admin"
+                  ],
+                  "path": [
+                    "admin-panel",
+                    "dashboard"
+                  ],
+                  "query": [
+                    {
+                      "key": "topN",
+                      "value": "5",
+                      "description": "How many top countries in countryGrowth (default 5)"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "5",
+                      "description": "How many rows in recentActivities (default 5)"
+                    }
+                  ]
+                },
+                "description": "One call for the whole admin dashboard. Returns widgets, userStatus, platformHealth, growthTrend, countryGrowth, recentActivities, topDownloadedRecipes, downloadsByType, topRecipes, topCountries and appDownloads. If one section fails it is null and listed in data.errors; the rest still load."
+              },
+              "response": []
+            },
+            {
               "name": "Dashboard Widgets",
               "request": {
                 "method": "GET",
@@ -5638,6 +5848,25 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "App Downloads",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}admin/admin-panel/dashboard/app-downloads",
+                  "host": [
+                    "{{url}}admin"
+                  ],
+                  "path": [
+                    "admin-panel",
+                    "dashboard",
+                    "app-downloads"
+                  ]
+                }
+              },
+              "response": []
             }
           ]
         },
@@ -5766,13 +5995,43 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n    \"status\": \"responded\"\n}",
+                  "raw": "{\n    \"status\": \"open\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
                     }
                   }
-                }
+                },
+                "description": "Admins can set only \"open\" or \"resolved\". pending is set when the customer creates the request, responded by POST .../reply, closed automatically after 15 days pending. Any other value returns 400 and leaves the status unchanged."
+              },
+              "response": []
+            },
+            {
+              "name": "Reply to support request",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"message\": \"Hi, thanks for reaching out. We have fixed the issue.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{url}}admin/support/{{supportId}}/reply",
+                  "host": [
+                    "{{url}}admin"
+                  ],
+                  "path": [
+                    "support",
+                    "{{supportId}}",
+                    "reply"
+                  ]
+                },
+                "description": "Emails the reply to the support request address (subject: Re: <request subject>), sets the request status to responded and logs the activity. 400 if message is empty, 404 if the id is unknown, 500 (status unchanged) if the email cannot be sent."
               },
               "response": []
             },
@@ -6930,6 +7189,70 @@
               "response": []
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "SendGrid",
+      "item": [
+        {
+          "name": "Send Test Email (SendGrid direct)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"SendGrid accepted the email (202)\", function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{sendgridApiKey}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"personalizations\": [\n    {\n      \"to\": [\n        {\n          \"email\": \"{{testEmail}}\"\n        }\n      ],\n      \"subject\": \"Test Email from SendGrid\"\n    }\n  ],\n  \"from\": {\n    \"email\": \"{{sendgridSenderEmail}}\"\n  },\n  \"content\": [\n    {\n      \"type\": \"text/plain\",\n      \"value\": \"Hello! This is a test email sent through SendGrid using Postman.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://api.sendgrid.com/v3/mail/send",
+              "protocol": "https",
+              "host": [
+                "api",
+                "sendgrid",
+                "com"
+              ],
+              "path": [
+                "v3",
+                "mail",
+                "send"
+              ]
+            }
+          },
+          "response": []
         }
       ]
     }

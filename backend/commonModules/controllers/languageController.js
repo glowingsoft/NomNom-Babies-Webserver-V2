@@ -9,7 +9,6 @@ const {
 const { userCache } = require("@config/nodeCache");
 const { logActivity } = require("@utils/activityUtil");
 
-// Get all languages with pagination
 const getLanguages = async (req, res) => {
   try {
     const { page, limit, skip } = parsePaginationParams(req);
@@ -41,7 +40,6 @@ const getLanguages = async (req, res) => {
   }
 };
 
-// Update a user's preferred language
 const updateUserLanguage = async (req, res) => {
   const { _id: userId } = req.user;
   const { languageId } = req.body;

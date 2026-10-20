@@ -69,8 +69,6 @@ const getReminderDetail = async (req, res) => {
   }
 };
 
-// ADMIN CRUD
-
 const createReminder = async (req, res) => {
   try {
     if (

@@ -19,12 +19,8 @@ const createNutritionRateLimiter = createRateLimiter("createNutrition", 15, 15);
 const updateNutritionRateLimiter = createRateLimiter("updateNutrition", 15, 15);
 const deleteNutritionRateLimiter = createRateLimiter("deleteNutrition", 15, 15);
 
-// ─── PUBLIC (logged-in users) ─────────────────────────────────────────────────
-
 router.get("/recipe/:recipeId", auth, getNutritionByRecipe);
 router.get("/baby", auth, getNutrition);
-
-// ───ADMIN ─────────────────────────────────────────────
 
 router.get("/admin/all", auth, roleMiddleware(["admin"]), adminGetNutritions);
 router.post("/admin", auth, roleMiddleware(["admin"]), createNutritionRateLimiter, createNutrition);

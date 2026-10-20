@@ -1,4 +1,3 @@
-// communicationController.js
 const {
   sendEmailViaSgrid,
   sendEmailViaAwsSes,
@@ -7,7 +6,7 @@ const {
 } = require("@utils/emailUtil");
 const { Devices } = require("@models/Devices");
 const { sendResponse, validateParams } = require("@utils/responseUtil");
-const adminFireBConfig = require("@config/firebaseAdmin"); // Firebase admin SDK setup
+const adminFireBConfig = require("@config/firebaseAdmin");
 const { registrationOtpEmailTemplate } = require("@utils/emailTemplates");
 const { NotificationExp } = require("@models/Notifications");
 const { Vonage } = require("@vonage/server-sdk");
@@ -20,7 +19,6 @@ const { Vonage } = require("@vonage/server-sdk");
 const sendEmailSgrid = async (req, res) => {
   const { title, emails, subject, body, config } = req.body;
 
-  // Validate required parameters
   const validationOptions = {
     bodyParams: ["title", "emails", "subject", "body"],
   };
@@ -54,7 +52,6 @@ const sendEmailSgrid = async (req, res) => {
 const sendEmailAws = async (req, res) => {
   const { title, emails, subject, body, config } = req.body;
 
-  // Validate required parameters
   const validationOptions = {
     bodyParams: ["title", "emails", "subject", "body"],
   };
@@ -86,7 +83,6 @@ const sendEmailAws = async (req, res) => {
  */
 const sendEmailBrevo = async (req, res) => {
   const { title, emails, subject, body, config } = req.body;
-  // Validate required parameters
   const validationOptions = {
     bodyParams: ["title", "emails", "subject", "body"],
   };
@@ -115,7 +111,6 @@ const sendEmailBrevo = async (req, res) => {
 const sendSmsViaPinpointAws = async (req, res) => {
   const { phoneNumber, otp } = req.body;
 
-  // Validate required parameters
   if (!phoneNumber || !otp) {
     return sendResponse({
       res,
@@ -151,7 +146,6 @@ const sendSmsViaPinpointAws = async (req, res) => {
 const sendNotificationControllerForTesting = async (req, res) => {
   const { recipients, title, body, data } = req.body;
 
-  // Validate required parameters
   const validationOptions = {
     bodyParams: ["recipients", "title", "body"],
   };
@@ -161,12 +155,7 @@ const sendNotificationControllerForTesting = async (req, res) => {
   }
 
   try {
-    // Placeholder for notification sending logic
-    // This can be expanded to handle different titles of notifications like SMS, Push, etc.
-    // console.log(`Sending ${title} notification to: ${recipients.join(", ")}`);
-    // console.log(`body: ${body}`);
 
-    // Simulate sending notification
     const response = await sendNotification(recipients, {
       title: title,
       body: body,
@@ -191,8 +180,8 @@ const sendNotificationControllerForTesting = async (req, res) => {
       return sendResponse({
         res,
         statusCode: 200,
-        translationKey: "notifications_sent_success", // Use the success translation key
-        values: { title }, // Pass the dynamic title
+        translationKey: "notifications_sent_success",
+        values: { title },
         data: {
           successIds,
           failureIds,
@@ -202,8 +191,8 @@ const sendNotificationControllerForTesting = async (req, res) => {
       return sendResponse({
         res,
         statusCode: 500,
-        translationKey: "notifications_sent_failure", // Use the success translation key
-        values: { title }, // Pass the dynamic title
+        translationKey: "notifications_sent_failure",
+        values: { title },
         data: {
           successIds,
           failureIds,
@@ -231,20 +220,17 @@ const sendUserNotifications = async ({
   title,
   body,
   data = {},
-  sender = null, // Optional: sender ID
-  objectId = null, // Optional: object ID
-  saveNotification = true, // send false if you don't want to save notification in db
+  sender = null,
+  objectId = null,
+  saveNotification = true,
 }) => {
   setImmediate(async () => {
     try {
-      // Fetch devices for all the user IDs
       const recipientDevices = await Devices.find({
         userId: { $in: recipientIds },
       }).select("userId devices");
 
-      // Check if recipientDevices exist
       if (recipientDevices && recipientDevices.length > 0) {
-        // Flatten the devices array and associate it with the userId
         const flattenedDevices = recipientDevices.flatMap((userDevice) =>
           userDevice.devices.map((device) => ({
             userId: userDevice.userId,
@@ -253,34 +239,30 @@ const sendUserNotifications = async ({
           })),
         );
 
-        // Group devices by userId and ensure no duplicate device IDs
         const devicesByUser = flattenedDevices.reduce((acc, device) => {
           if (!acc[device.userId]) {
-            acc[device.userId] = new Set(); // Use Set to avoid duplicate device IDs
+            acc[device.userId] = new Set();
           }
-          acc[device.userId].add(device); // Add device to Set (duplicates are automatically filtered out)
+          acc[device.userId].add(device);
           return acc;
         }, {});
-        // Prepare responses array to track sending status
         const responses = [];
 
-        // Send notifications and gather responses
         for (const userId in devicesByUser) {
           const userDevices = Array.from(devicesByUser[userId]).map(
             (device) => ({
               deviceId: device.deviceId,
               deviceType: device.deviceType,
             }),
-          ); // Convert Set to Array and include deviceType
+          );
 
-          // Send notifications without awaiting
           const sendNotificationPromise = sendNotification(userDevices, {
             title,
             body,
             data: {
-              ...data, // Additional data payload
-              subjectId: sender ? sender.toString() : null, // Convert subjectId to plain text
-              objectId: objectId.toString(), // Ensure objectId is also plain text
+              ...data,
+              subjectId: sender ? sender.toString() : null,
+              objectId: objectId.toString(),
             },
           });
 
@@ -297,14 +279,12 @@ const sendUserNotifications = async ({
           );
         });
 
-        // Process the notifications after sending them
         if (!saveNotification) {
           return;
         }
 
-        // Once all notifications are sent, prepare notifications to save
         const notificationsToSave = responses.map(({ userId }) => ({
-          type: data.type || "system", // Assign a default type if not provided
+          type: data.type || "system",
           subjectId: sender,
           objectId: objectId,
           objectType: data.objectType,
@@ -313,7 +293,6 @@ const sendUserNotifications = async ({
           body,
         }));
 
-        // Save all notifications in a batch to the database
         await NotificationExp.insertMany(notificationsToSave);
       } else {
         console.log("No devices found for the provided user IDs.");
@@ -328,7 +307,6 @@ const sendNotification = async (recipients, payload) => {
   const androidTokens = [];
   const iosTokens = [];
 
-  // Separate Android and iOS tokens
   recipients.forEach((recipient) => {
     if (recipient.deviceType === "android") {
       androidTokens.push(recipient.deviceId);
@@ -337,7 +315,6 @@ const sendNotification = async (recipients, payload) => {
     }
   });
 
-  // Notification payload for Android
   const androidPayload = {
     notification: {
       title: payload.title,
@@ -346,7 +323,6 @@ const sendNotification = async (recipients, payload) => {
     data: payload.data,
   };
 
-  // Notification payload for iOS
   const iosPayload = {
     notification: {
       title: payload.title,
@@ -359,18 +335,17 @@ const sendNotification = async (recipients, payload) => {
             title: payload.title,
             body: payload.body,
           },
-          sound: "default", // Use default sound on iOS
-          badge: 1, // Optional: set the badge number on the app icon
+          sound: "default",
+          badge: 1,
         },
       },
     },
-    data: payload.data, // Optional: add custom data for iOS
+    data: payload.data,
   };
 
   try {
     const promises = [];
 
-    // Send to Android devices
     if (androidTokens.length > 0) {
       const androidPromise = adminFireBConfig.messaging().sendEachForMulticast({
         tokens: androidTokens,
@@ -379,7 +354,6 @@ const sendNotification = async (recipients, payload) => {
       promises.push(androidPromise);
     }
 
-    // Send to iOS devices
     if (iosTokens.length > 0) {
       const iosPromise = adminFireBConfig.messaging().sendEachForMulticast({
         tokens: iosTokens,
@@ -389,21 +363,6 @@ const sendNotification = async (recipients, payload) => {
     }
 
     const responses = await Promise.all(promises);
-
-    // // Log the response of each promise with a message
-    // responses.forEach((response, index) => {
-    //   console.log(`Response from promise ${index + 1}:`, response);
-    //   if (response.failureCount > 0) {
-    //     response.responses.forEach((resp, idx) => {
-    //       if (!resp.success) {
-    //         console.error(
-    //           `Failure message from promise ${index + 1}, response ${idx + 1}:`,
-    //           resp.error
-    //         );
-    //       }
-    //     });
-    //   }
-    // });
 
     const result = {
       responses: [],
@@ -419,7 +378,6 @@ const sendNotification = async (recipients, payload) => {
   }
 };
 
-// Initialize the Vonage client with your credentials
 const vonage = new Vonage({
   apiKey: process.env.VONAGE_API_KEY,
   apiSecret: process.env.VONAGE_API_SECRET,
@@ -428,7 +386,6 @@ const vonage = new Vonage({
 const sendSmsViaVonage = async (req, res) => {
   const { phoneNumber, otp } = req.body;
 
-  // Validate required parameters
   if (!phoneNumber || !otp) {
     return sendResponse({
       res,
@@ -440,16 +397,14 @@ const sendSmsViaVonage = async (req, res) => {
 
   try {
     const otpMessage = `${otp} is your OTP for the ZahraPay App`;
-    const from = "+921234567890"; // Replace with your Vonage virtual number
+    const from = "+921234567890";
 
-    // Send SMS using Nexmo's API (Vonage)
     const messageData = {
       to: phoneNumber,
       from: from,
       text: otpMessage,
     };
 
-    // Send the message via Nexmo (Vonage) SDK
     vonage.sms.send(messageData, (err, responseData) => {
       console.log("Entered the callback function");
       if (err) {
@@ -505,7 +460,6 @@ const sendSMSSomalianAPI = async (req, res) => {
   const { phoneNumber, otp } = req.body;
   const message = `Your OTP is ${otp}`;
 
-  // Validate required parameters
   if (!phoneNumber || !otp) {
     return sendResponse({
       res,
@@ -516,17 +470,14 @@ const sendSMSSomalianAPI = async (req, res) => {
   }
 
   try {
-    const apiKey = "07098f01-6071-4045-abd8-63a7ec3e25ac"; // Replace with your actual API Key
-    const apiSecret = "5810f9db-bd8e-4002-ab57-721ab0d8ee1e"; // Replace with your actual API Secret
+    const apiKey = "07098f01-6071-4045-abd8-63a7ec3e25ac";
+    const apiSecret = "5810f9db-bd8e-4002-ab57-721ab0d8ee1e";
 
-    // Combine API credentials
     const accountApiCredentials = `${apiKey}:${apiSecret}`;
 
-    // Convert credentials to base64
     const buff = Buffer.from(accountApiCredentials);
     const base64Credentials = buff.toString("base64");
 
-    // Set the request headers, including the Authorization header
     const requestHeaders = {
       headers: {
         Authorization: `Basic ${base64Credentials}`,
@@ -534,17 +485,15 @@ const sendSMSSomalianAPI = async (req, res) => {
       },
     };
 
-    // Construct the request data (the SMS content and destination number)
     const requestData = JSON.stringify({
       messages: [
         {
-          content: message, // Message content
-          destination: phoneNumber, // Destination phone number
+          content: message,
+          destination: phoneNumber,
         },
       ],
     });
 
-    // Send the POST request to the API endpoint
     const response = await axios.post(
       "https://rest.mymobileapi.com/bulkmessages",
       requestData,

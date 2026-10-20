@@ -5,23 +5,38 @@ const {
 } = require("@utils/responseUtil");
 const moment = require("moment-timezone");
 const { NotificationExp } = require("@models/Notifications");
+const { User } = require("@models/UserModel");
+const { lookupOne } = require("@utils/aggregationUtil");
 
-// Get all notifications with pagination
 const getNotifications = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
 
   try {
+    const castedQuery = NotificationExp.find({
+      receiverId: req.user._id,
+    }).cast(NotificationExp);
+
     const [notifications, totalNotifications] = await Promise.all([
-      NotificationExp.find({ receiverId: req.user._id })
-        //  .populate('objectId') // Populate full subjectId object
-        .populate("subjectId", "_id name profileIcon") // Populate full subjectId object
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+      NotificationExp.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...lookupOne({
+          from: User.collection.name,
+          field: "subjectId",
+          fields: [
+            "_id",
+            { name: "name", default: "" },
+            { name: "profileIcon", default: "" },
+          ],
+        }),
+        { $addFields: { isRead: { $ifNull: ["$isRead", false] } } },
+        { $unset: "data" },
+      ]),
       NotificationExp.countDocuments({ receiverId: req.user._id }),
     ]);
 
-    // Calculate pagination meta
     const meta = generateMeta(page, limit, totalNotifications);
 
     const formattedNotifications = notifications.map((notification) => {
@@ -59,7 +74,7 @@ const getNotifications = async (req, res) => {
     return sendResponse({
       res,
       statusCode: 200,
-      translationKey: "notifications_fetched_success", // Use translation key
+      translationKey: "notifications_fetched_success",
       data: formattedNotifications,
       meta: meta,
     });
@@ -68,13 +83,12 @@ const getNotifications = async (req, res) => {
     return sendResponse({
       res,
       statusCode: 500,
-      translationKey: "notifications_fetch_error", // Use translation key for errors
+      translationKey: "notifications_fetch_error",
       error,
     });
   }
 };
 
-// Mark a notification as read by ID
 const readNotification = async (req, res) => {
   try {
     const notification = await NotificationExp.findByIdAndUpdate(
@@ -86,13 +100,13 @@ const readNotification = async (req, res) => {
       return sendResponse({
         res,
         statusCode: 404,
-        translationKey: "notification_not_found", // Use translation key
+        translationKey: "notification_not_found",
       });
     }
     return sendResponse({
       res,
       statusCode: 200,
-      translationKey: "notification_marked_read_success", // Use translation key
+      translationKey: "notification_marked_read_success",
       data: notification,
     });
   } catch (error) {
@@ -100,7 +114,7 @@ const readNotification = async (req, res) => {
     return sendResponse({
       res,
       statusCode: 500,
-      translationKey: "notification_mark_read_error", // Use translation key
+      translationKey: "notification_mark_read_error",
       error,
     });
   }

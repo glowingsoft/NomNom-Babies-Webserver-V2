@@ -16,18 +16,15 @@ const {
 const createRateLimiter = require("@utils/rateLimiter");
 
 const router = express.Router();
-// Create a rate limiter for signup routes
-// Define rate limiters
-const signupRateLimiter = createRateLimiter("register", 15, 15); // 15 requests per 15 minutes
-const loginRateLimiter = createRateLimiter("login", 15, 15); // 15 requests per 15 minute
-const generateOtpRateLimiter = createRateLimiter("forgotPassword", 15, 15); // 15 requests per 15 minutes
-const resendOtpRateLimiter = createRateLimiter("resendOtp", 15, 15); // 15 requests per 15 minutes
-const verifyOtpRateLimiter = createRateLimiter("verifyOtp", 15, 15); // 10 requests per 10 minutes
+const signupRateLimiter = createRateLimiter("register", 15, 15);
+const loginRateLimiter = createRateLimiter("login", 15, 15);
+const generateOtpRateLimiter = createRateLimiter("forgotPassword", 15, 15);
+const resendOtpRateLimiter = createRateLimiter("resendOtp", 15, 15);
+const verifyOtpRateLimiter = createRateLimiter("verifyOtp", 15, 15);
 
-const resetPasswordRateLimiter = createRateLimiter("resetPassword", 15, 15); // 15 requests per 15 minutes
-const changePasswordRateLimiter = createRateLimiter("changePassword", 15, 15); // 15 requests per 15 minutes
+const resetPasswordRateLimiter = createRateLimiter("resetPassword", 15, 15);
+const changePasswordRateLimiter = createRateLimiter("changePassword", 15, 15);
 
-// Apply rate limiters to routes
 router.post("/register", signupRateLimiter, register);
 router.post("/login", loginRateLimiter, login);
 router.post("/resend-otp/email", resendOtpRateLimiter, (req, res, next) => {

@@ -12,9 +12,6 @@ function buildKey(namespace, params = {}) {
   return qs ? `${namespace}:${qs}` : namespace;
 }
 
-/**
- * SET
- */
 async function setJson(key, value, ttl = null) {
   if (!isRedisUp()) return;
 
@@ -25,9 +22,6 @@ async function setJson(key, value, ttl = null) {
   } catch (_) {}
 }
 
-/**
- * GET
- */
 async function getJson(key) {
   if (!isRedisUp()) return null;
 
@@ -41,9 +35,6 @@ async function getJson(key) {
   }
 }
 
-/**
- * LOCKS
- */
 async function acquireLock(key, ttl = 5) {
   if (!isRedisUp()) return null;
 
@@ -66,9 +57,6 @@ async function releaseLock(key, token) {
   } catch (_) {}
 }
 
-/**
- * MAIN CACHE
- */
 async function cache({ namespace, params = {}, ttl = 60, fetchFn }) {
   const key = buildKey(namespace, params);
 
@@ -118,10 +106,6 @@ async function cache({ namespace, params = {}, ttl = 60, fetchFn }) {
   }
 }
 
-
-/**
- * INVALIDATE
- */
 async function invalidate(prefix) {
   if (!isRedisUp()) return true;
 

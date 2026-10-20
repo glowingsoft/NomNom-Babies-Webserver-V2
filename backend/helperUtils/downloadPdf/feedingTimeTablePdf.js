@@ -16,11 +16,13 @@ const {
 
 const {
   drawHeader,
+  addFooters,
   ensureSpace,
   sectionTitle,
   infoCard,
 } = require("./layout");
-const { statusBadge } = require("./helpers");
+const { statusBadge, drawTick } = require("./helpers");
+const { getLogo } = require("./logo");
 
 function drawProgress(doc, percentage) {
   ensureSpace(doc, 80);
@@ -96,11 +98,7 @@ function noteCard(doc, note) {
     .roundedRect(45, top, PAGE_WIDTH - 90, 36, 6)
     .fillAndStroke("#FFFFFF", LIGHT);
 
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(FONT_SIZES.sectionTitle)
-    .fillColor(SUCCESS)
-    .text("\u2713", 60, top + 10);
+  drawTick(doc, 60, top + 11, SUCCESS, 12);
 
   doc
     .font("Helvetica")
@@ -111,9 +109,12 @@ function noteCard(doc, note) {
   doc.y = top + 45;
 }
 
-const generateFeedingTimeTablePdf = (response) => {
+const generateFeedingTimeTablePdf = async (response) => {
+  const logo = await getLogo();
+
   return new Promise((resolve) => {
-    const doc = new PDFDocument({ size: "A4", margin: MARGIN });
+    const doc = new PDFDocument({ size: "A4", margin: MARGIN, bufferPages: true });
+    doc._pdfLogo = logo ? doc.openImage(logo) : null;
 
     const buffers = [];
     doc.on("data", buffers.push.bind(buffers));
@@ -152,6 +153,7 @@ const generateFeedingTimeTablePdf = (response) => {
     sectionTitle(doc, "Feeding Notes");
 
     response.feedingNotes.forEach((note) => noteCard(doc, note));
+    addFooters(doc);
     doc.end();
   });
 };

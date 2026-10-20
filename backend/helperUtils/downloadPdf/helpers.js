@@ -7,10 +7,6 @@ const {
 } = require("./constants");
 const { ensureSpace } = require("./layout");
 
-/**
- * Small pill/chip, e.g. nutrition tags or category labels.
- * Returns the width used so callers can flow chips left-to-right.
- */
 function chip(doc, text, x, y) {
   const width = doc.widthOfString(text) + 24;
 
@@ -25,7 +21,6 @@ function chip(doc, text, x, y) {
   return width;
 }
 
-/** Wraps a list of chips onto multiple lines within the content width. */
 function chipRow(doc, texts) {
   ensureSpace(doc, 40);
 
@@ -47,7 +42,6 @@ function chipRow(doc, texts) {
   doc.y = y + 40;
 }
 
-/** Small colored status badge, e.g. Completed / Pending. */
 function statusBadge(doc, text, color, x, y, width = 80) {
   doc.roundedRect(x, y, width, 24, 12).fill(color);
 
@@ -58,6 +52,33 @@ function statusBadge(doc, text, color, x, y, width = 80) {
     .text(text, x, y + 7, { width, align: "center" });
 }
 
+function drawTick(doc, x, y, color, size = 10) {
+  doc
+    .save()
+    .lineWidth(2)
+    .lineCap("round")
+    .lineJoin("round")
+    .strokeColor(color)
+    .moveTo(x, y + size * 0.55)
+    .lineTo(x + size * 0.38, y + size * 0.9)
+    .lineTo(x + size, y + size * 0.1)
+    .stroke()
+    .restore();
+}
+
+function drawCheckbox(doc, x, y, checked, size = 12) {
+  doc.save();
+
+  if (checked) {
+    doc.roundedRect(x, y, size, size, 3).fill(PRIMARY);
+    drawTick(doc, x + 2, y + 2, "white", size - 4);
+  } else {
+    doc.roundedRect(x, y, size, size, 3).lineWidth(1.2).stroke(PRIMARY);
+  }
+
+  doc.restore();
+}
+
 const drawDivider = (doc) => {
   doc.moveDown(0.5);
 };
@@ -66,5 +87,7 @@ module.exports = {
   chip,
   chipRow,
   statusBadge,
+  drawTick,
+  drawCheckbox,
   drawDivider,
 };

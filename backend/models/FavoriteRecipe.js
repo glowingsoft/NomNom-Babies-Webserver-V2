@@ -29,7 +29,6 @@ const favoriteRecipeSchema = new mongoose.Schema(
   },
 );
 
-// Prevent duplicate favorites
 favoriteRecipeSchema.index({ user: 1, recipe: 1 }, { unique: true });
 
 module.exports =

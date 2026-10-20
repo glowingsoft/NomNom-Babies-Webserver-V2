@@ -1,3 +1,4 @@
+const { statusCounts } = require("@utils/statusCounts");
 const Language = require("@models/Language");
 const { User } = require("@models/UserModel");
 const {
@@ -9,12 +10,10 @@ const {
 const { userCache } = require("@config/nodeCache");
 const { logActivity } = require("@utils/activityUtil");
 
-// Create a new language
 const createLanguage = async (req, res) => {
   const { title, transliteration, flag, code, active } = req.body;
 
   try {
-    //validate params
     const validationOptions = {
       rawData: ["title", "transliteration", "code"],
     };
@@ -59,7 +58,7 @@ const createLanguage = async (req, res) => {
     return sendResponse({
       res,
       statusCode: 201,
-      translationKey: "language_created_success", // Translation key for success
+      translationKey: "language_created_success",
       data: language,
     });
   } catch (error) {
@@ -67,7 +66,7 @@ const createLanguage = async (req, res) => {
       return sendResponse({
         res,
         statusCode: 400,
-        translationKey: "language_code_unique_violation", // Custom translation key for duplicate language code
+        translationKey: "language_code_unique_violation",
         error,
       });
     }
@@ -80,7 +79,6 @@ const createLanguage = async (req, res) => {
   }
 };
 
-// Get all languages with pagination
 const getLanguages = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
 
@@ -122,7 +120,7 @@ const getLanguages = async (req, res) => {
   try {
     const [languages, totalLanguages] = await Promise.all([
       Language.find(filters)
-        .sort({ title: 1 }) // Sort by title in alphabetical order
+        .sort({ title: 1 })
         .skip((page - 1) * limit)
         .limit(limit),
       Language.countDocuments(filters),
@@ -137,12 +135,18 @@ const getLanguages = async (req, res) => {
       active: item.active,
     }));
 
-    const meta = generateMeta(page, limit, totalLanguages);
+    const counts = await statusCounts(Language, {
+      path: "active",
+      statuses: ["active", "inactive"],
+      booleanMap: { true: "active", false: "inactive" },
+    });
+
+    const meta = { ...generateMeta(page, limit, totalLanguages), counts };
 
     return sendResponse({
       res,
       statusCode: 200,
-      translationKey: "languages_fetched_success", // Translation key for success
+      translationKey: "languages_fetched_success",
       data: formatted,
       meta,
     });
@@ -156,7 +160,6 @@ const getLanguages = async (req, res) => {
   }
 };
 
-// Update an existing language
 const updateLanguage = async (req, res) => {
   const { id } = req.params;
   const { title, transliteration, flag, code, active } = req.body;
@@ -210,7 +213,6 @@ const updateLanguage = async (req, res) => {
       data: language,
     });
   } catch (error) {
-    // Handle validation errors from Mongoose
     const statusCode = error.name === "ValidationError" ? 400 : 500;
     const translationKey =
       error.name === "ValidationError"
@@ -226,7 +228,6 @@ const updateLanguage = async (req, res) => {
   }
 };
 
-// Delete a language by ID
 const deleteLanguage = async (req, res) => {
   const { id } = req.params;
 

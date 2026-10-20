@@ -6,7 +6,6 @@
  * @returns {number|string} - The distance in the specified unit or an error message.
  */
 function calculateDistance(coords1, coords2, unit = 'km') {
-    // Validate input coordinates
     if (!Array.isArray(coords1) || !Array.isArray(coords2)) {
       return "Error: Coordinates must be arrays [longitude, latitude].";
     }
@@ -24,15 +23,12 @@ function calculateDistance(coords1, coords2, unit = 'km') {
       return "Error: Coordinates must contain valid numbers.";
     }
   
-    // Haversine formula constants
-    const R = unit === 'miles' ? 3958.8 : 6371.0; // Earth's radius in miles or kilometers
+    const R = unit === 'miles' ? 3958.8 : 6371.0;
     const toRadians = (degree) => (degree * Math.PI) / 180;
   
-    // Calculate differences in latitude and longitude in radians
     const dLat = toRadians(lat2 - lat1);
     const dLon = toRadians(lon2 - lon1);
   
-    // Apply Haversine formula
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos(toRadians(lat1)) *
@@ -41,8 +37,8 @@ function calculateDistance(coords1, coords2, unit = 'km') {
         Math.sin(dLon / 2);
   
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c; // Distance in the specified unit
-    return distance.toFixed(2); // Return the result rounded to 2 decimal places
+    const distance = R * c;
+    return distance.toFixed(2);
   }
   
   module.exports = calculateDistance;

@@ -16,8 +16,6 @@ const roleMiddleware = require("@middlewares/roleMiddleware");
 
 const router = express.Router();
 
-// GET
-
 router.get(
   "/terms-conditions",
   auth,
@@ -35,8 +33,6 @@ router.get(
 );
 
 router.get("/faqs", auth, roleMiddleware(["admin"]), getFaqs);
-
-// UPDATE
 
 router.put(
   "/terms-conditions",
@@ -56,11 +52,7 @@ router.put(
 
 router.put("/faqs/:id", auth, roleMiddleware(["admin"]), updateFaqs);
 
-// CREATE
-
 router.post("/faqs", auth, roleMiddleware(["admin"]), createFaqs);
-
-// DELETE
 
 router.delete("/faqs/:id", auth, roleMiddleware(["admin"]), deleteFaqs);
 

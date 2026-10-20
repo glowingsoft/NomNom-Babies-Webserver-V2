@@ -1,4 +1,3 @@
-// config/sockets/socketServer.js
 const http = require("http");
 const { Server } = require("socket.io");
 const { initializeSockets } = require("./index");
@@ -13,7 +12,6 @@ function createSocketServer(app, allowedOrigins) {
     },
   });
 
-  // expose ONCE, globally
   global.io = io;
 
   initializeSockets(io);

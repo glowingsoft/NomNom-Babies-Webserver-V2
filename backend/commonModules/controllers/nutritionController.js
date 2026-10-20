@@ -9,8 +9,15 @@ const {
   generateMeta,
 } = require("@utils/responseUtil");
 const { logActivity } = require("@utils/activityUtil");
+const { lookupMany } = require("@utils/aggregationUtil");
+const { statusCounts } = require("@utils/statusCounts");
 
-// ─── PUBLIC ───────────────────────────────────────────────────────────────────
+const activeNutritionTag = (tag = "$$this") => ({
+  $and: [
+    { $ne: [`${tag}.isActive`, false] },
+    { $ne: [`${tag}.status`, "disabled"] },
+  ],
+});
 
 const getNutritionByRecipe = async (req, res) => {
   try {
@@ -22,12 +29,24 @@ const getNutritionByRecipe = async (req, res) => {
     )
       return;
 
-    const nutrition = await Nutrition.findOne({
-      recipe: req.params.recipeId,
+    const castedQuery = Recipe.find({
+      _id: req.params.recipeId,
+      status: "published",
       isActive: true,
-    }).populate("recipe", "_id title");
+    }).cast(Recipe);
 
-    if (!nutrition) {
+    const [recipe] = await Recipe.aggregate([
+      { $match: castedQuery },
+      { $limit: 1 },
+      ...lookupMany({
+        from: Nutrition.collection.name,
+        field: "nutritionTags",
+        fields: ["name", "benefit"],
+        filter: activeNutritionTag(),
+      }),
+    ]);
+
+    if (!recipe) {
       return sendResponse({
         res,
         statusCode: 404,
@@ -40,11 +59,11 @@ const getNutritionByRecipe = async (req, res) => {
       statusCode: 200,
       translationKey: "data_fetched_successfully",
       data: {
-        nutrients: nutrition.nutrients,
+        nutrients: recipe.nutritionTags,
 
-        feedingInsight: nutrition.feedingInsight,
+        feedingInsight: recipe.feedingInsight ?? "",
 
-        allergyReminder: nutrition.allergyReminder,
+        allergyReminder: recipe.allergyReminder ?? "",
       },
     });
   } catch (error) {
@@ -79,43 +98,38 @@ const getNutrition = async (req, res) => {
       });
     }
 
-    const recipes = await Recipe.find({
-      babyStage: baby.babyStage,
-
-      status: "published",
-
-      isActive: true,
-    }).select("_id");
-
-    const recipeIds = recipes.map((r) => r._id);
-
-    const nutritions = await Nutrition.find({
-      recipe: {
-        $in: recipeIds,
+    const nutrients = await Recipe.aggregate([
+      {
+        $match: {
+          babyStage: baby.babyStage,
+          status: "published",
+          isActive: true,
+        },
       },
-
-      isActive: true,
-    });
-
-    const nutrientMap = new Map();
-
-    nutritions.forEach((nutrition) => {
-      nutrition.nutrients.forEach((nutrient) => {
-        if (!nutrientMap.has(nutrient.name)) {
-          nutrientMap.set(
-            nutrient.name,
-
-            {
-              name: nutrient.name,
-
-              benefit: nutrient.benefit,
-            },
-          );
-        }
-      });
-    });
-
-    const nutrients = Array.from(nutrientMap.values());
+      { $unwind: "$nutritionTags" },
+      { $group: { _id: "$nutritionTags" } },
+      {
+        $lookup: {
+          from: Nutrition.collection.name,
+          localField: "_id",
+          foreignField: "_id",
+          as: "tag",
+        },
+      },
+      { $unwind: "$tag" },
+      { $match: { $expr: activeNutritionTag("$tag") } },
+      { $sort: { "tag.createdAt": 1, "tag._id": 1 } },
+      {
+        $group: {
+          _id: "$tag.name",
+          benefit: { $first: "$tag.benefit" },
+          order: { $first: "$tag.createdAt" },
+          tagId: { $first: "$tag._id" },
+        },
+      },
+      { $sort: { order: 1, tagId: 1 } },
+      { $replaceWith: { name: "$_id", benefit: "$benefit" } },
+    ]);
 
     return sendResponse({
       res,
@@ -138,8 +152,6 @@ const getNutrition = async (req, res) => {
     });
   }
 };
-
-// ─── ADMIN ────────────────────────────────────────────────────────────────────
 
 const adminGetNutritions = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
@@ -175,7 +187,7 @@ const adminGetNutritions = async (req, res) => {
               {
                 $match: {
                   $expr: {
-                    $in: ["$$nutritionId", "$nutritionTags"],
+                    $in: ["$$nutritionId", { $ifNull: ["$nutritionTags", []] }],
                   },
                 },
               },
@@ -232,7 +244,12 @@ const adminGetNutritions = async (req, res) => {
       Nutrition.countDocuments(query),
     ]);
 
-    const meta = generateMeta(page, limit, totalRecords);
+    const counts = await statusCounts(Nutrition, {
+      statuses: ["active", "disabled"],
+      defaultStatus: "active",
+    });
+
+    const meta = { ...generateMeta(page, limit, totalRecords), counts };
 
     return sendResponse({
       res,
@@ -251,7 +268,6 @@ const adminGetNutritions = async (req, res) => {
   }
 };
 
-// Create nutrient
 const createNutrition = async (req, res) => {
   try {
     if (
@@ -300,7 +316,6 @@ const createNutrition = async (req, res) => {
   }
 };
 
-// Update nutrient
 const updateNutrition = async (req, res) => {
   try {
     if (
@@ -367,7 +382,6 @@ const updateNutrition = async (req, res) => {
   }
 };
 
-// Delete nutrient (blocked if any Recipe still references it)
 const deleteNutrition = async (req, res) => {
   try {
     if (

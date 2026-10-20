@@ -1,4 +1,3 @@
-// controllers/supportController.js
 const SupportRequest = require("../../models/SupportRequest");
 const {
   sendResponse,
@@ -6,7 +5,6 @@ const {
 } = require("../../helperUtils/responseUtil");
 const { logActivity } = require("@utils/activityUtil");
 
-// Create a new support request
 const createSupportRequest = async (req, res) => {
   const { name, email, subject, message } = req.body;
 
@@ -24,7 +22,7 @@ const createSupportRequest = async (req, res) => {
       email,
       subject,
       message,
-      status: "pending", // Set the default status
+      status: "pending",
     });
 
     await supportRequest.save();

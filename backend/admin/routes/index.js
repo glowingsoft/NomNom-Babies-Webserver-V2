@@ -17,7 +17,6 @@ router.use("/languages", languageRoutes);
 router.use("/admin-panel", adminPanelRoutes);
 router.use("/activities", activityRoutes);
 router.use("/support", supportRoutes);
-//db utils routes
 router.use("/util", bulkInsertRoutes);
 
 module.exports = router;

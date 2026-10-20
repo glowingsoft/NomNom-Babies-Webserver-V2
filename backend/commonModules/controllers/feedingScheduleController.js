@@ -10,8 +10,13 @@ const Baby = require("@models/Baby");
 const mongoose = require("mongoose");
 const { User } = require("@models/UserModel");
 const { logActivity } = require("@utils/activityUtil");
+const { lookupOne } = require("@utils/aggregationUtil");
 
-// Get feeding schedule for active baby on a given date
+const feedingScheduleDefaults = {
+  description: { $ifNull: ["$description", ""] },
+  isOptional: { $ifNull: ["$isOptional", false] },
+};
+
 const getFeedingSchedule = async (req, res) => {
   try {
     if (!validateParams(req, res, { queryParams: ["date"] })) return;
@@ -136,7 +141,6 @@ const removeScheduleSlot = async (req, res) => {
   }
 };
 
-// Create feeding schedule for a baby
 const createFeedingSchedule = async (req, res) => {
   try {
     if (
@@ -211,7 +215,6 @@ const createFeedingSchedule = async (req, res) => {
   }
 };
 
-// Update feeding schedule slots
 const updateFeedingSchedule = async (req, res) => {
   try {
     if (
@@ -288,7 +291,6 @@ const updateFeedingSchedule = async (req, res) => {
   }
 };
 
-// Delete feeding schedule
 const deleteFeedingSchedule = async (req, res) => {
   try {
     if (
@@ -358,11 +360,20 @@ const getUserFeedingSchedules = async (req, res) => {
 
     const totalRecords = await FeedingSchedule.countDocuments(query);
 
-    const schedules = await FeedingSchedule.find(query)
-      .populate("baby", "_id name")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    const castedQuery = FeedingSchedule.find(query).cast(FeedingSchedule);
+
+    const schedules = await FeedingSchedule.aggregate([
+      { $match: castedQuery },
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      ...lookupOne({
+        from: Baby.collection.name,
+        field: "baby",
+        fields: ["_id", "name"],
+      }),
+      { $addFields: feedingScheduleDefaults },
+    ]);
 
     return sendResponse({
       res,
@@ -400,11 +411,20 @@ const getUserBabyFeedingSchedule = async (req, res) => {
 
     const totalRecords = await FeedingSchedule.countDocuments(query);
 
-    const schedule = await FeedingSchedule.find(query)
-      .populate("baby", "_id name")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
+    const castedQuery = FeedingSchedule.find(query).cast(FeedingSchedule);
+
+    const schedule = await FeedingSchedule.aggregate([
+      { $match: castedQuery },
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      ...lookupOne({
+        from: Baby.collection.name,
+        field: "baby",
+        fields: ["_id", "name"],
+      }),
+      { $addFields: feedingScheduleDefaults },
+    ]);
 
     if (!schedule) {
       return sendResponse({
@@ -431,7 +451,6 @@ const getUserBabyFeedingSchedule = async (req, res) => {
   }
 };
 
-// Mark / unmark a slot as completed for a given date
 const toggleSlotCompletion = async (req, res) => {
   try {
     if (

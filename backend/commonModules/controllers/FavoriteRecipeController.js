@@ -8,8 +8,8 @@ const {
   generateMeta,
 } = require("@utils/responseUtil");
 const { logActivity } = require("@utils/activityUtil");
+const { lookupOne } = require("@utils/aggregationUtil");
 
-// Add recipe to favorites
 const addFavorite = async (req, res) => {
   try {
     if (
@@ -105,7 +105,6 @@ const addFavorite = async (req, res) => {
   }
 };
 
-// Remove favorite
 const removeFavorite = async (req, res) => {
   try {
     if (
@@ -185,7 +184,6 @@ const removeFavorite = async (req, res) => {
   }
 };
 
-// Get user favorites
 const getFavorites = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -196,15 +194,31 @@ const getFavorites = async (req, res) => {
       user: userId,
     };
 
+    const castedQuery = FavoriteRecipe.find(query).cast(FavoriteRecipe);
+
     const [favorites, totalRecords] = await Promise.all([
-      FavoriteRecipe.find(query)
-        .populate({
-          path: "recipe",
-          select: "_id title image prepTime mealType",
-        })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
+      FavoriteRecipe.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+        ...lookupOne({
+          from: Recipe.collection.name,
+          field: "recipe",
+          fields: ["_id", "title", "image", "prepTime", "mealType"],
+        }),
+        {
+          $replaceWith: {
+            _id: "$recipe._id",
+            title: "$recipe.title",
+            image: {
+              $cond: ["$recipe", { $ifNull: ["$recipe.image", ""] }, "$$REMOVE"],
+            },
+            prepTime: "$recipe.prepTime",
+            mealType: "$recipe.mealType",
+          },
+        },
+      ]),
 
       FavoriteRecipe.countDocuments(query),
     ]);
@@ -213,17 +227,7 @@ const getFavorites = async (req, res) => {
       res,
       statusCode: 200,
       translationKey: "data_fetched_successfully",
-      data: favorites.map((item) => ({
-        _id: item.recipe?._id,
-
-        title: item.recipe?.title,
-
-        image: item.recipe?.image,
-
-        prepTime: item.recipe?.prepTime,
-
-        mealType: item.recipe?.mealType,
-      })),
+      data: favorites,
       meta: generateMeta(page, limit, totalRecords),
     });
   } catch (error) {

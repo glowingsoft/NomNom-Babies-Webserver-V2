@@ -22,7 +22,6 @@ const downloadRecipeSchema = new mongoose.Schema(
   },
 );
 
-// Prevent duplicate download
 downloadRecipeSchema.index({ user: 1, recipe: 1 }, { unique: true });
 
 module.exports =

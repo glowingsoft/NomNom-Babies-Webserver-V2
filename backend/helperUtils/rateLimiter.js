@@ -1,6 +1,7 @@
-// utils/rateLimiter.js
 const rateLimit = require("express-rate-limit");
 const { sendResponse } = require("./responseUtil");
+
+const RATE_LIMIT_MULTIPLIER = Number(process.env.RATE_LIMIT_MULTIPLIER) || 100;
 
 /**
  * Create a rate limiter middleware for Express routes.
@@ -10,14 +11,13 @@ const { sendResponse } = require("./responseUtil");
  * @returns {Function} Express middleware function for rate limiting.
  */
 function createRateLimiter(endpoint, timeWindow = 10, maxRequests = 15) {
-  // Check if the environment is development
   if (process.env.NODE_ENV === "dev") {
-    // Return a no-op middleware that does nothing
     return (req, res, next) => next();
   }
   return rateLimit({
-    windowMs: timeWindow * 60 * 1000, // Convert timeWindow to milliseconds
-    max: maxRequests, // Limit each IP to maxRequests per windowMs
+    windowMs: timeWindow * 60 * 1000,
+    max: maxRequests * RATE_LIMIT_MULTIPLIER,
+    skip: (req) => req.method === "OPTIONS",
     handler: (req, res, next, options) => {
       return sendResponse({
         res,

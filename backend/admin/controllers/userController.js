@@ -20,13 +20,19 @@ const Subscription = require("@models/Subscription");
 const FeedingLog = require("@models/FeedingLog");
 const FeedingSchedule = require("@models/FeedingSchedule");
 const GroceryList = require("@models/GroceryList");
-// Path to the JSON file
+const { statusCounts } = require("@utils/statusCounts");
+const Country = require("@models/Country");
+const BabyStage = require("@models/BabyStage");
+const {
+  lookupOne,
+  lookupMany,
+  leanGroceryRecipeStages,
+} = require("@utils/aggregationUtil");
 const currenciesFilePath = path.join(
   process.cwd(),
   "backend/assets/currencies/currencies.json",
 );
 
-// Function to read the JSON file and parse it
 const readJSONFile = (filePath) => {
   try {
     const data = fs.readFileSync(filePath, "utf8");
@@ -37,10 +43,7 @@ const readJSONFile = (filePath) => {
   }
 };
 
-// Read the currencies data at startup
 const currenciesData = readJSONFile(currenciesFilePath);
-
-//get all users
 
 const allUsers = async (req, res) => {
   try {
@@ -48,7 +51,6 @@ const allUsers = async (req, res) => {
 
     const query = {
       "accountState.userType": { $ne: "admin" },
-      // "accountState.status": { $ne: "hardDeleted" },
       "accountState.status": {
         $nin: ["softDeleted", "hardDeleted"],
       },
@@ -69,14 +71,25 @@ const allUsers = async (req, res) => {
       query["onboarding.selectedCountries"] = country;
     }
 
+    const castedUserQuery = User.find(query).cast(User);
+
     const [users, totalRecords] = await Promise.all([
-      User.find(query)
-        .select("-password -resetToken -otpInfo")
-        .populate("onboarding.selectedCountries", "_id name")
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * Number(limit))
-        .limit(Number(limit))
-        .lean(),
+      User.aggregate([
+        { $match: castedUserQuery },
+        { $sort: { createdAt: -1 } },
+        ...(Number.isNaN((page - 1) * Number(limit))
+          ? []
+          : [{ $skip: (page - 1) * Number(limit) }]),
+        ...(Number(limit) ? [{ $limit: Math.abs(Number(limit)) }] : []),
+        {
+          $project: {
+            name: 1,
+            email: 1,
+            profileIcon: 1,
+            "accountState.status": 1,
+          },
+        },
+      ]),
 
       User.countDocuments(query),
     ]);
@@ -84,19 +97,19 @@ const allUsers = async (req, res) => {
     const userIds = users.map((user) => user._id);
 
     const [babies, groceryLists] = await Promise.all([
-      Baby.find({
-        user: { $in: userIds },
-      })
+      Baby.aggregate([
+        { $match: { user: { $in: userIds } } },
+        ...lookupMany({
+          from: Country.collection.name,
+          field: "selectedCountries",
+          fields: ["_id", "name"],
+        }),
+      ]),
 
-        .populate("selectedCountries", "_id name")
-        .lean(),
-
-      GroceryList.find({
-        user: { $in: userIds },
-      })
-        .select("-recipes.ingredients.checked")
-        .populate("recipes.recipe", "_id title image icon")
-        .lean(),
+      GroceryList.aggregate([
+        { $match: { user: { $in: userIds } } },
+        ...leanGroceryRecipeStages(),
+      ]),
     ]);
 
     const groceryListMap = {};
@@ -155,12 +168,22 @@ const allUsers = async (req, res) => {
       };
     });
 
+    const counts = await statusCounts(User, {
+      path: "accountState.status",
+      defaultStatus: "active",
+      statuses: ["active", "inactive", "suspended", "restricted"],
+      match: {
+        "accountState.userType": { $ne: "admin" },
+        "accountState.status": { $nin: ["softDeleted", "hardDeleted"] },
+      },
+    });
+
     return sendResponse({
       res,
       statusCode: 200,
       translationKey: "users_fetched_successfully",
       data: formattedUsers,
-      meta: generateMeta(page, limit, totalRecords),
+      meta: { ...generateMeta(page, limit, totalRecords), counts },
     });
   } catch (error) {
     sendResponse({
@@ -178,7 +201,6 @@ const getUserById = async (req, res) => {
 
     const user = await User.findById(id)
       .select("-password -resetToken -otpInfo")
-      .populate("onboarding.selectedCountries", "_id name")
       .lean();
 
     if (!user) {
@@ -192,19 +214,26 @@ const getUserById = async (req, res) => {
     const [
       babies,
       recipes,
-      feedingSchedule,
-      feedingLogs,
       favoriteRecipes,
       subscriptions,
       supportQuestions,
       groceryList,
     ] = await Promise.all([
-      Baby.find({
-        user: user._id,
-      })
-        .populate("selectedCountries", "_id name")
-        .populate("babyStage", "_id title")
-        .lean(),
+      Baby.aggregate([
+        { $match: { user: user._id } },
+        ...lookupMany({
+          from: Country.collection.name,
+          field: "selectedCountries",
+          fields: ["_id", "name"],
+          lean: true,
+        }),
+        ...lookupOne({
+          from: BabyStage.collection.name,
+          field: "babyStage",
+          fields: ["_id", "title"],
+          lean: true,
+        }),
+      ]),
       Recipe.find({
         user: user._id,
       })
@@ -213,21 +242,15 @@ const getUserById = async (req, res) => {
         .sort({ updatedAt: -1 })
         .lean(),
 
-      FeedingSchedule.find({
-        user: id,
-      })
-        .populate("baby", "name")
-        .lean(),
-
-      FeedingLog.find({
-        user: user._id,
-      }).lean(),
-
-      FavoriteRecipe.find({
-        user: user._id,
-      })
-        .populate("recipe", "title image")
-        .lean(),
+      FavoriteRecipe.aggregate([
+        { $match: { user: user._id } },
+        ...lookupOne({
+          from: Recipe.collection.name,
+          field: "recipe",
+          fields: ["_id", "title", "image"],
+          lean: true,
+        }),
+      ]),
 
       Subscription.find({
         user: user._id,
@@ -241,13 +264,17 @@ const getUserById = async (req, res) => {
         .sort({ createdAt: -1 })
         .lean(),
 
-      GroceryList.findOne({
-        user: user._id,
-      })
-        .select("-recipes.ingredients.checked")
-        .populate("baby", "name")
-        .populate("recipes.recipe", "_id title image icon")
-        .lean(),
+      GroceryList.aggregate([
+        { $match: { user: user._id } },
+        { $limit: 1 },
+        ...lookupOne({
+          from: Baby.collection.name,
+          field: "baby",
+          fields: ["_id", "name"],
+          lean: true,
+        }),
+        ...leanGroceryRecipeStages(),
+      ]).then(([list]) => list ?? null),
     ]);
 
     const timetables = await FeedingSchedule.aggregate([
@@ -482,11 +509,6 @@ const deleteUser = async (req, res) => {
       });
     }
 
-    // For SoftDelete
-    // user.accountState.status = "softDeleted";
-    // await user.save();
-
-    // For Permanent Delete
     await User.findByIdAndDelete(id);
 
     return sendResponse({
@@ -504,10 +526,9 @@ const deleteUser = async (req, res) => {
   }
 };
 
-// Block User Function
 const blockUser = async (req, res) => {
   const { _id } = req.user;
-  const { userIdToBlock } = req.params; // ID of the user to block
+  const { userIdToBlock } = req.params;
 
   const validationOptions = {
     pathParams: ["userIdToBlock"],
@@ -515,7 +536,7 @@ const blockUser = async (req, res) => {
   };
 
   if (!validateParams(req, res, validationOptions)) {
-    return; // Validation failed, response already sent
+    return;
   }
   if (_id.equals(userIdToBlock)) {
     return sendResponse({
@@ -538,7 +559,6 @@ const blockUser = async (req, res) => {
       });
     }
 
-    // Check if already blocked
     if (currentUser.blockedUsers.includes(userIdToBlock)) {
       return sendResponse({
         res,
@@ -547,10 +567,8 @@ const blockUser = async (req, res) => {
       });
     }
 
-    // Add the user to the blocked list of the current user
     currentUser.blockedUsers.push(userIdToBlock);
 
-    // Save the current user
     await currentUser.save();
 
     return sendResponse({
@@ -568,10 +586,9 @@ const blockUser = async (req, res) => {
   }
 };
 
-// Report User Function
 const reportUser = async (req, res) => {
   const currentUser = req.user;
-  const { userIdToReport } = req.params; // ID of the user to report
+  const { userIdToReport } = req.params;
 
   const validationOptions = {
     pathParams: ["userIdToReport"],
@@ -579,7 +596,7 @@ const reportUser = async (req, res) => {
   };
 
   if (!validateParams(req, res, validationOptions)) {
-    return; // Validation failed, response already sent
+    return;
   }
   if (currentUser._id.equals(userIdToReport)) {
     return sendResponse({
@@ -599,7 +616,6 @@ const reportUser = async (req, res) => {
       });
     }
 
-    // Check if current user has already reported this user
     if (userToReport.reportedBy.includes(currentUser._id)) {
       return sendResponse({
         res,
@@ -608,13 +624,10 @@ const reportUser = async (req, res) => {
       });
     }
 
-    // Add current user's ID to the reportedBy list
     userToReport.reportedBy.push(currentUser._id);
 
-    // Increment the report count
     userToReport.reportCount += 1;
 
-    // Check if user should be suspended
     if (userToReport.reportCount >= 10) {
       userToReport.accountState.status = "suspended";
       userToReport.accountState.reason =
@@ -622,7 +635,6 @@ const reportUser = async (req, res) => {
       userToReport.accountState.suspensionDate = new Date();
     }
 
-    // Save the reported user
     await userToReport.save();
 
     return sendResponse({
@@ -640,14 +652,11 @@ const reportUser = async (req, res) => {
   }
 };
 
-// Add or update a subscription for a user
 const addOrUpdateSubscription = async (req, res) => {
   const { type } = req.body;
   const { _id } = req.user;
 
-  // Validate subscription type
   if (!Object.values(SubscriptionType).includes(type)) {
-    // Convert SubscriptionType values to an array
     const validSubscriptionTypes = Object.values(SubscriptionType);
     const errorMessage =
       "Invalid subscription type. Valid types are: " +
@@ -661,13 +670,11 @@ const addOrUpdateSubscription = async (req, res) => {
 
   try {
     const user = await User.findById(_id).select("subscriptions");
-    // Check if the subscription already exists
     const existingSubscription = user.subscriptions.find(
-      (sub) => sub.type === type, // Use 'type' instead of 'status'
+      (sub) => sub.type === type,
     );
 
     if (existingSubscription) {
-      // Update the expiry date based on subscription type
       if (type === SubscriptionType.BLOOM_AGAIN_ESSENTIALS) {
         existingSubscription.endDate = moment(existingSubscription.endDate)
           .add(1, "month")
@@ -678,7 +685,6 @@ const addOrUpdateSubscription = async (req, res) => {
           .toDate();
       }
     } else {
-      // Add new subscription
       let endDate = null;
       if (type === SubscriptionType.BLOOM_AGAIN_ESSENTIALS) {
         endDate = moment().add(1, "month").toDate();
@@ -687,13 +693,12 @@ const addOrUpdateSubscription = async (req, res) => {
       }
 
       user.subscriptions.push({
-        type, // Correct 'type' field
+        type,
         startDate: new Date(),
         endDate,
       });
     }
 
-    // Save the user with the updated subscription
     await user.save();
 
     return sendResponse({
@@ -713,13 +718,11 @@ const addOrUpdateSubscription = async (req, res) => {
   }
 };
 
-// Remove a subscription
 const removeSubscription = async (req, res) => {
   const { _id: userId } = req.user;
   const { subscriptionId } = req.params;
 
   try {
-    // Find and remove the subscription
     const user = await User.findById(userId).select("subscriptions");
     const subscriptionIndex = user.subscriptions.findIndex(
       (sub) => sub._id.toString() === subscriptionId,
@@ -734,7 +737,6 @@ const removeSubscription = async (req, res) => {
 
     user.subscriptions.splice(subscriptionIndex, 1);
 
-    // Save the user after removing the subscription
     await user.save();
 
     return sendResponse({
@@ -752,7 +754,6 @@ const removeSubscription = async (req, res) => {
   }
 };
 
-// Get all subscriptions for a user
 const getSubscriptions = async (req, res) => {
   const { _id } = req.user;
 
@@ -812,7 +813,6 @@ const getSubscriptions = async (req, res) => {
   }
 };
 
-// Create a mapping for all possible fields and their respective collections
 const populationFields = {};
 
 /**
@@ -825,7 +825,6 @@ const getUserWithPopulatedFields = async (userId, fieldsToPopulate = []) => {
   try {
     let query = User.findById(userId);
 
-    // Build the dynamic population based on the fields requested
     fieldsToPopulate.forEach((field) => {
       const populationConfig = populationFields[field];
       if (populationConfig) {
@@ -833,12 +832,11 @@ const getUserWithPopulatedFields = async (userId, fieldsToPopulate = []) => {
       }
     });
 
-    // Execute the query and return the populated user
     const user = await query.exec();
-    return user; // Return the user object
+    return user;
   } catch (error) {
     console.error("Error fetching user:", error);
-    throw new Error("User fetch error"); // Let the middleware handle the error response
+    throw new Error("User fetch error");
   }
 };
 
@@ -857,7 +855,6 @@ const getUserProfile = async (req, res, next, fieldsToPopulate = []) => {
       "_id name signatureFoods",
     );
 
-    // Build the dynamic population based on the fields requested
     if (fieldsToPopulate.length > 0) {
       fieldsToPopulate.forEach((field) => {
         const populationConfig = populationFields[field];
@@ -870,7 +867,6 @@ const getUserProfile = async (req, res, next, fieldsToPopulate = []) => {
       });
     }
 
-    // Execute the query and return the populated user
     const user = await query.exec();
 
     if (!user) {
@@ -928,13 +924,10 @@ const getOtherUserProfile = async (req, res, next) => {
       ["resetToken", "accountState", "metadata"],
     );
 
-    // Include phone number if there are bookings with status "booked" or "picked"
-    // if (bookings.length > 0) {
     response.contactInfo = {
       phoneNumber: user.phoneNumber,
       verificationStatus: user.verificationStatus.phoneNumber,
     };
-    // }
 
     response.recentReviews = recentReviews;
 
@@ -994,7 +987,6 @@ const updateUserProfile = async (req, res, next) => {
     }
 
     if (currencySymbol && currencyCode) {
-      //verify currency symbol and code matches in the list
       if (currenciesData === null) {
         return sendResponse({
           res,
@@ -1017,10 +1009,8 @@ const updateUserProfile = async (req, res, next) => {
       user.currencyCode = currencyCode;
     }
 
-    // Update fields if provided
     if (name && name.trim() !== "") user.name = name;
     if (phoneNumber) {
-      //validate phone using validator
       if (!validator.isMobilePhone(phoneNumber)) {
         return sendResponse({
           res,
@@ -1032,7 +1022,6 @@ const updateUserProfile = async (req, res, next) => {
     }
 
     if (location) {
-      // Validate location
       const { coordinates, fullAddress } = location;
       if (!coordinates || coordinates.length !== 2 || !fullAddress) {
         return sendResponse({
@@ -1041,7 +1030,6 @@ const updateUserProfile = async (req, res, next) => {
           translationKey: "invalid_location_1",
         });
       }
-      // Ensure coordinates are numbers
       const [longitude, latitude] = coordinates;
       if (typeof longitude !== "number" || typeof latitude !== "number") {
         return sendResponse({
@@ -1057,7 +1045,6 @@ const updateUserProfile = async (req, res, next) => {
       };
     }
 
-    // Save the updated user
     await user.save();
 
     userCache.del(currentUser._id.toString());
@@ -1074,8 +1061,8 @@ const updateUserProfile = async (req, res, next) => {
     return sendResponse({
       res,
       statusCode: 500,
-      translationKey: "user_profile_update_error", // Use a translation key
-      values: { errorMessage: error.message }, // Pass the error message as a dynamic value
+      translationKey: "user_profile_update_error",
+      values: { errorMessage: error.message },
       error,
     });
   }

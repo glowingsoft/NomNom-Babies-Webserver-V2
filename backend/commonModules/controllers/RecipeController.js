@@ -1,6 +1,15 @@
 const mongoose = require("mongoose");
 const Recipe = require("@models/Recipe");
 const Nutrition = require("@models/Nutrition");
+const Country = require("@models/Country");
+const { statusCounts } = require("@utils/statusCounts");
+const BabyStage = require("@models/BabyStage");
+const Meals = require("@models/Meals");
+const {
+  lookupOne,
+  lookupMany,
+  recipeDocumentDefaults,
+} = require("@utils/aggregationUtil");
 const {
   sendResponse,
   validateParams,
@@ -9,7 +18,6 @@ const {
 } = require("@utils/responseUtil");
 const Baby = require("@models/Baby");
 const { User } = require("@models/UserModel");
-const { babyPopulate } = require("@utils/babyUtil");
 const FavoriteRecipe = require("@models/FavoriteRecipe");
 const GroceryList = require("@models/GroceryList");
 const { logActivity } = require("@utils/activityUtil");
@@ -32,9 +40,6 @@ const validateNutritionTagIds = async (nutritionTags = []) => {
   return { valid: true };
 };
 
-// ─── PUBLIC ───────────────────────────────────────────────────────────────────
-
-// Get recipes filtered by baby's countries and stage (main recipe list screen)
 const getRecipes = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
 
@@ -87,35 +92,43 @@ const getRecipes = async (req, res) => {
       };
     }
 
+    const castedQuery = Recipe.find(query).cast(Recipe);
+
     const [recipes, totalRecords] = await Promise.all([
-      Recipe.find(query)
-
-        .populate("country", "_id name")
-
-        .populate("babyStage", "_id title")
-
-        .populate("nutritionTags", "_id name benefit")
-
-        .select(
-          `
-            title
-            icon
-            image
-            prepTime
-            mealType
-            nutritionTags
-            country
-            babyStage
-          `,
-        )
-
-        .sort({
-          createdAt: -1,
-        })
-
-        .skip((page - 1) * limit)
-
-        .limit(limit),
+      Recipe.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...lookupOne({
+          from: Country.collection.name,
+          field: "country",
+          fields: ["_id", "name"],
+        }),
+        ...lookupOne({
+          from: BabyStage.collection.name,
+          field: "babyStage",
+          fields: ["_id", "title"],
+        }),
+        ...lookupMany({
+          from: Nutrition.collection.name,
+          field: "nutritionTags",
+          fields: ["_id", "name", "benefit"],
+        }),
+        {
+          $replaceWith: {
+            _id: "$_id",
+            title: "$title",
+            image: { $ifNull: ["$image", ""] },
+            icon: { $ifNull: ["$icon", ""] },
+            prepTime: "$prepTime",
+            country: "$country",
+            babyStage: "$babyStage",
+            mealType: "$mealType",
+            nutritionTags: "$nutritionTags",
+          },
+        },
+      ]),
 
       Recipe.countDocuments(query),
     ]);
@@ -144,7 +157,6 @@ const getRecipes = async (req, res) => {
   }
 };
 
-// Get single recipe detail
 const getRecipeById = async (req, res) => {
   try {
     if (
@@ -156,14 +168,58 @@ const getRecipeById = async (req, res) => {
       return;
     }
 
-    const recipe = await Recipe.findOne({
+    const castedQuery = Recipe.find({
       _id: req.params.id,
       status: "published",
       isActive: true,
-    })
-      .populate("country", "_id name")
-      .populate("babyStage", "_id title features")
-      .populate("nutritionTags", "_id name benefit");
+    }).cast(Recipe);
+
+    const [recipe] = await Recipe.aggregate([
+      { $match: castedQuery },
+      { $limit: 1 },
+      ...lookupOne({
+        from: Country.collection.name,
+        field: "country",
+        fields: ["_id", "name"],
+      }),
+      ...lookupOne({
+        from: BabyStage.collection.name,
+        field: "babyStage",
+        fields: ["_id", "title"],
+      }),
+      ...lookupMany({
+        from: Nutrition.collection.name,
+        field: "nutritionTags",
+        fields: ["_id", "name", "benefit"],
+      }),
+      {
+        $addFields: {
+          icon: { $ifNull: ["$icon", ""] },
+          image: { $ifNull: ["$image", ""] },
+          feedingInsight: { $ifNull: ["$feedingInsight", ""] },
+          allergyReminder: { $ifNull: ["$allergyReminder", ""] },
+          notes: { $ifNull: ["$notes", ""] },
+          acceptanceLabel: { $ifNull: ["$acceptanceLabel", ""] },
+          method: { $ifNull: ["$method", []] },
+          ingredients: {
+            $map: {
+              input: { $ifNull: ["$ingredients", []] },
+              as: "ing",
+              in: {
+                $mergeObjects: [
+                  "$$ing",
+                  {
+                    quantity: { $ifNull: ["$$ing.quantity", ""] },
+                    icon: { $ifNull: ["$$ing.icon", ""] },
+                    category: { $ifNull: ["$$ing.category", ""] },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    ]);
 
     if (!recipe) {
       return sendResponse({
@@ -172,6 +228,10 @@ const getRecipeById = async (req, res) => {
         translationKey: "recipe_not_found",
       });
     }
+
+    Recipe.updateOne({ _id: recipe._id }, { $inc: { views: 1 } }).catch(
+      () => {},
+    );
 
     const user = await User.findById(req.user._id);
 
@@ -388,14 +448,36 @@ const getBabyRecipes = async (req, res) => {
       baby: baby._id,
     }).distinct("recipe");
 
+    const castedQuery = Recipe.find(query).cast(Recipe);
+
     const [recipes, totalRecords] = await Promise.all([
-      Recipe.find(query)
-        .populate("country", "_id name")
-        .populate("babyStage", "_id title")
-        .populate("nutritionTags", "_id name benefit")
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+      Recipe.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...lookupOne({
+          from: Country.collection.name,
+          field: "country",
+          fields: ["_id", "name"],
+        }),
+        ...lookupOne({
+          from: BabyStage.collection.name,
+          field: "babyStage",
+          fields: ["_id", "title"],
+        }),
+        ...lookupMany({
+          from: Nutrition.collection.name,
+          field: "nutritionTags",
+          fields: ["_id", "name", "benefit"],
+        }),
+        {
+          $addFields: {
+            icon: { $ifNull: ["$icon", ""] },
+            image: { $ifNull: ["$image", ""] },
+          },
+        },
+      ]),
 
       Recipe.countDocuments(query),
     ]);
@@ -459,7 +541,19 @@ const getCustomCulturalPicks = async (req, res) => {
       });
     }
 
-    const baby = await Baby.findById(user.activeBaby).populate(babyPopulate);
+    const [baby] = await Baby.aggregate([
+      { $match: { _id: user.activeBaby } },
+      ...lookupOne({
+        from: BabyStage.collection.name,
+        field: "babyStage",
+        fields: ["_id"],
+      }),
+      ...lookupMany({
+        from: Country.collection.name,
+        field: "selectedCountries",
+        fields: ["_id"],
+      }),
+    ]);
 
     if (!baby) {
       return sendResponse({
@@ -480,14 +574,26 @@ const getCustomCulturalPicks = async (req, res) => {
       status: "published",
     };
 
+    const castedQuery = Recipe.find(query).cast(Recipe);
+
     const [recipes, totalRecords] = await Promise.all([
-      Recipe.find(query)
-        .populate("country", "_id name")
-        .sort({
-          createdAt: -1,
-        })
-        .skip(skip)
-        .limit(limit),
+      Recipe.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+        ...lookupOne({
+          from: Country.collection.name,
+          field: "country",
+          fields: ["_id", "name"],
+        }),
+        {
+          $addFields: {
+            icon: { $ifNull: ["$icon", ""] },
+            image: { $ifNull: ["$image", ""] },
+          },
+        },
+      ]),
 
       Recipe.countDocuments(query),
     ]);
@@ -519,9 +625,6 @@ const getCustomCulturalPicks = async (req, res) => {
   }
 };
 
-// ─── ADMIN ────────────────────────────────────────────────────────────────────
-
-// Get all recipes with pagination + filters (admin)
 const adminGetRecipes = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
 
@@ -534,19 +637,45 @@ const adminGetRecipes = async (req, res) => {
     if (countryId) query.country = countryId;
     if (stageId) query.babyStage = stageId;
 
+    const castedQuery = Recipe.find(query).cast(Recipe);
+
     const [recipes, totalRecords] = await Promise.all([
-      Recipe.find(query)
-        .populate("country", "_id name")
-        .populate("babyStage", "_id title")
-        .populate("mealType", "_id name")
-        .populate("nutritionTags", "_id name benefit")
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+      Recipe.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...lookupOne({
+          from: Country.collection.name,
+          field: "country",
+          fields: ["_id", "name"],
+        }),
+        ...lookupOne({
+          from: BabyStage.collection.name,
+          field: "babyStage",
+          fields: ["_id", "title"],
+        }),
+        ...lookupOne({
+          from: Meals.collection.name,
+          field: "mealType",
+          fields: ["_id", "name"],
+        }),
+        ...lookupMany({
+          from: Nutrition.collection.name,
+          field: "nutritionTags",
+          fields: ["_id", "name", "benefit"],
+        }),
+        { $addFields: recipeDocumentDefaults },
+      ]),
       Recipe.countDocuments(query),
     ]);
 
-    const meta = generateMeta(page, limit, totalRecords);
+    const counts = await statusCounts(Recipe, {
+      statuses: ["draft", "pending", "published", "archived"],
+      defaultStatus: "published",
+    });
+
+    const meta = { ...generateMeta(page, limit, totalRecords), counts };
 
     return sendResponse({
       res,
@@ -576,11 +705,33 @@ const adminGetRecipeById = async (req, res) => {
       return;
     }
 
-    const recipe = await Recipe.findById(req.params.id)
-      .populate("country", "_id name")
-      .populate("babyStage", "_id title")
-      .populate("mealType", "_id name")
-      .populate("nutritionTags", "_id name benefit");
+    const castedQuery = Recipe.find({ _id: req.params.id }).cast(Recipe);
+
+    const [recipe] = await Recipe.aggregate([
+      { $match: castedQuery },
+      { $limit: 1 },
+      ...lookupOne({
+        from: Country.collection.name,
+        field: "country",
+        fields: ["_id", "name"],
+      }),
+      ...lookupOne({
+        from: BabyStage.collection.name,
+        field: "babyStage",
+        fields: ["_id", "title"],
+      }),
+      ...lookupOne({
+        from: Meals.collection.name,
+        field: "mealType",
+        fields: ["_id", "name"],
+      }),
+      ...lookupMany({
+        from: Nutrition.collection.name,
+        field: "nutritionTags",
+        fields: ["_id", "name", "benefit"],
+      }),
+      { $addFields: recipeDocumentDefaults },
+    ]);
 
     if (!recipe) {
       return sendResponse({
@@ -612,7 +763,6 @@ const adminGetRecipeById = async (req, res) => {
   }
 };
 
-// Create a recipe
 const createRecipe = async (req, res) => {
   try {
     if (
@@ -713,7 +863,6 @@ const createRecipe = async (req, res) => {
   }
 };
 
-// Update a recipe
 const updateRecipe = async (req, res) => {
   try {
     if (
@@ -831,11 +980,6 @@ const updateRecipe = async (req, res) => {
       },
     });
 
-    // const updatedRecipe = await Recipe.findById(recipe._id)
-    //   .populate("country", "_id name")
-    //   .populate("babyStage", "_id title")
-    //   .populate("nutritionTags", "_id name benefit");
-
     return sendResponse({
       res,
       statusCode: 200,
@@ -852,7 +996,6 @@ const updateRecipe = async (req, res) => {
   }
 };
 
-// Delete a recipe
 const deleteRecipe = async (req, res) => {
   try {
     if (

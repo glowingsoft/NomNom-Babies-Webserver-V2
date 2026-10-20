@@ -4,7 +4,6 @@ const mime = require("mime-types");
 const upload = require("../../middlewares/uploadFileMw");
 const { sendResponse } = require("@utils/responseUtil");
 
-// Helper function to determine file type
 const getFileType = (mimeType) => {
   if (mimeType.startsWith("image/")) {
     return "image";
@@ -15,7 +14,6 @@ const getFileType = (mimeType) => {
   }
 };
 
-// Function to handle file upload
 const uploadFile = (req, res) => {
   upload(req, res, (err) => {
     if (err) {
@@ -50,7 +48,6 @@ const uploadFile = (req, res) => {
   });
 };
 
-// Function to get a file by filename
 const getFileByName = (req, res) => {
   const filename = req.params.filename;
   const filePath = path.join(__dirname, "../uploads", filename);
@@ -69,7 +66,6 @@ const getFileByName = (req, res) => {
   });
 };
 
-// Function to get file details by filename
 const getFileDetails = (req, res) => {
   const filename = req.params.filename;
   const filePath = path.join(__dirname, "../uploads", filename);
@@ -86,7 +82,6 @@ const getFileDetails = (req, res) => {
       const mimeType = mime.lookup(filePath);
       const fileType = getFileType(mimeType);
 
-      // Construct URL path
       const urlPath = `${req.protocol}://${req.get("host")}/api/upload/${filename}`;
 
       const fileDetails = {
@@ -106,7 +101,6 @@ const getFileDetails = (req, res) => {
   });
 };
 
-// Function to get all files
 const getAllFiles = (req, res) => {
   const directoryPath = path.join(__dirname, "../uploads");
 
@@ -124,7 +118,6 @@ const getAllFiles = (req, res) => {
         const mimeType = mime.lookup(filePath);
         const fileType = getFileType(mimeType);
 
-        // Construct URL path
         const urlPath = `${req.protocol}://${req.get("host")}/api/upload/${file}`;
 
         return {

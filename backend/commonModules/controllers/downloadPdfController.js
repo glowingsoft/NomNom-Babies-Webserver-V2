@@ -2,6 +2,18 @@ const FeedingSchedule = require("@models/FeedingSchedule");
 const Recipe = require("@models/Recipe");
 const GroceryList = require("@models/GroceryList");
 const Baby = require("@models/Baby");
+const Country = require("@models/Country");
+const BabyStage = require("@models/BabyStage");
+const Nutrition = require("@models/Nutrition");
+const Meals = require("@models/Meals");
+const {
+  lookupOne,
+  lookupMany,
+  recipeDocumentDefaults,
+  groceryRecipeStages,
+  babyPopulateStages,
+  babyDocumentDefaults,
+} = require("@utils/aggregationUtil");
 const { User } = require("@models/UserModel");
 
 const {
@@ -13,7 +25,6 @@ const { generateRecipePdf } = require("@utils/downloadPdf/recipeDetailPdf");
 const { generateGroceryPdf } = require("@utils/downloadPdf/groceryListPdf");
 
 const { sendResponse, parsePaginationParams, generateMeta } = require("@utils/responseUtil");
-const { babyPopulate } = require("@utils/babyUtil");
 const FeedingLog = require("@models/FeedingLog");
 const { savePdf } = require("@utils/downloadPdf/pdfStorage");
 const { logActivity } = require("@utils/activityUtil");
@@ -32,7 +43,14 @@ const downloadFeedingTimeTablePdf = async (req, res) => {
     }
     const today = new Date().toISOString().split("T")[0];
 
-    const baby = await Baby.findById(user.activeBaby).populate(babyPopulate);
+    const baby =
+      (
+        await Baby.aggregate([
+          { $match: { _id: user.activeBaby } },
+          ...babyPopulateStages(),
+          { $addFields: babyDocumentDefaults },
+        ])
+      )[0] ?? null;
 
     const schedules = await FeedingSchedule.find({
       baby: baby._id,
@@ -129,10 +147,42 @@ const downloadFeedingTimeTablePdf = async (req, res) => {
 
 const downloadRecipePdf = async (req, res) => {
   try {
-    const recipe = await Recipe.findById(req.params.recipeId)
-      .populate("country", "_id name")
-      .populate("babyStage", "_id title")
-      .populate("nutritionTags", "_id name");
+    const castedQuery = Recipe.find({ _id: req.params.recipeId }).cast(Recipe);
+
+    const [recipe] = await Recipe.aggregate([
+      { $match: castedQuery },
+      { $limit: 1 },
+      ...lookupOne({
+        from: Country.collection.name,
+        field: "country",
+        fields: ["_id", "name"],
+      }),
+      ...lookupOne({
+        from: BabyStage.collection.name,
+        field: "babyStage",
+        fields: ["_id", "title"],
+      }),
+      ...lookupMany({
+        from: Nutrition.collection.name,
+        field: "nutritionTags",
+        fields: ["_id", "name"],
+      }),
+      {
+        $lookup: {
+          from: Meals.collection.name,
+          localField: "mealType",
+          foreignField: "_id",
+          as: "__meal",
+        },
+      },
+      {
+        $addFields: {
+          ...recipeDocumentDefaults,
+          mealTypeName: { $arrayElemAt: ["$__meal.name", 0] },
+        },
+      },
+      { $project: { __meal: 0 } },
+    ]);
 
     if (!recipe) {
       return sendResponse({
@@ -151,7 +201,7 @@ const downloadRecipePdf = async (req, res) => {
 
       prepTime: `${recipe.prepTime}`,
 
-      mealType: recipe.mealType,
+      mealType: recipe.mealTypeName,
 
       stage: recipe.babyStage
         ? {
@@ -182,6 +232,10 @@ const downloadRecipePdf = async (req, res) => {
 
         description: step.instruction,
       })),
+
+      feedingInsight: recipe.feedingInsight,
+
+      allergyReminder: recipe.allergyReminder,
 
       notes: recipe.notes,
 
@@ -233,9 +287,15 @@ const downloadRecipePdf = async (req, res) => {
 
 const downloadGroceryPdf = async (req, res) => {
   try {
-    const grocery = await GroceryList.findOne({
-      user: req.user._id,
-    }).populate("recipes.recipe", "_id title image");
+    const castedQuery = GroceryList.find({ user: req.user._id }).cast(
+      GroceryList,
+    );
+
+    const [grocery] = await GroceryList.aggregate([
+      { $match: castedQuery },
+      { $limit: 1 },
+      ...groceryRecipeStages(),
+    ]);
 
     if (!grocery) {
       return sendResponse({
@@ -245,8 +305,6 @@ const downloadGroceryPdf = async (req, res) => {
       });
     }
 
-    ////////////////////////////////////////////
-
     const recipesIncluded = grocery.recipes.map((recipe) => ({
       recipeId: recipe.recipe._id,
 
@@ -254,8 +312,6 @@ const downloadGroceryPdf = async (req, res) => {
 
       image: recipe.recipe.image || "",
     }));
-
-    ////////////////////////////////////////////
 
     const groceryChecklist = [];
 
@@ -290,15 +346,11 @@ const downloadGroceryPdf = async (req, res) => {
       });
     });
 
-    ////////////////////////////////////////////
-
     const ingredientCategories = Object.keys(categoriesMap).map((category) => ({
       category,
 
       items: [...new Set(categoriesMap[category])],
     }));
-
-    ////////////////////////////////////////////
 
     const groceryResponse = {
       recipesIncluded,
@@ -563,4 +615,4 @@ module.exports = {
   downloadGroceryPdf,
   getDownloadedPdfs,
 };
-
+

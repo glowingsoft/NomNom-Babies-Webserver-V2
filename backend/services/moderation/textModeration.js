@@ -5,9 +5,6 @@ async function initTextModeration() {
   filter = new Filter();
 }
 
-/**
- * Extract string values recursively
- */
 function extractStrings(obj, results = []) {
   if (!obj) return results;
 
@@ -34,9 +31,6 @@ function extractStrings(obj, results = []) {
 
 function textModerationMiddleware(req, res, next) {
 
-  /**
-   * 🚫 Skip moderation for excluded routes
-   */
   const excludedRoutes = [
     "/api/app/payments/cards",
     "/api/webhooks"
@@ -46,16 +40,10 @@ function textModerationMiddleware(req, res, next) {
     return next();
   }
 
-  /**
-   * Only apply to write operations
-   */
   if (!["POST", "PUT", "PATCH"].includes(req.method)) {
     return next();
   }
 
-  /**
-   * Safety guard
-   */
   if (!filter) {
     return next();
   }
