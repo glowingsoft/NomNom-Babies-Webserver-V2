@@ -15,6 +15,10 @@ const recipeSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    views: {
+      type: Number,
+      default: 0,
+    },
     prepTime: {
       type: Number,
       required: true,

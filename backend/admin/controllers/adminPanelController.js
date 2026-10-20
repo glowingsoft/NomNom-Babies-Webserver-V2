@@ -253,7 +253,6 @@ const topDownloadedRecipes = async (req, res) => {
         $group: {
           _id: "$targetId",
           title: { $first: "$metadata.recipeTitle" },
-          mealType: { $first: "$metadata.mealType" },
           downloads: { $sum: 1 },
         },
       },
@@ -261,8 +260,18 @@ const topDownloadedRecipes = async (req, res) => {
       { $limit: 10 },
       {
         $lookup: {
+          from: Recipe.collection.name,
+          localField: "_id",
+          foreignField: "_id",
+          pipeline: [{ $project: { title: 1, mealType: 1 } }],
+          as: "recipe",
+        },
+      },
+      { $unwind: { path: "$recipe", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
           from: Meals.collection.name,
-          localField: "mealType",
+          localField: "recipe.mealType",
           foreignField: "_id",
           as: "mealType",
         },
@@ -277,7 +286,7 @@ const topDownloadedRecipes = async (req, res) => {
         $project: {
           _id: 0,
           recipeId: "$_id",
-          title: 1,
+          title: { $ifNull: ["$title", "$recipe.title"] },
           mealType: {
             _id: "$mealType._id",
             name: "$mealType.name",
@@ -332,7 +341,7 @@ const topViewedRecipes = async (req, res) => {
     const recipes = await Recipe.find({ status: "published" })
       .populate("country", "_id name")
       .populate("mealType", "_id name")
-      .sort({ views: -1 })
+      .sort({ views: -1, createdAt: -1 })
       .limit(10)
       .select("title mealType views");
 

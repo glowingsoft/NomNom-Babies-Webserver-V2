@@ -169,6 +169,10 @@ const getRecipeById = async (req, res) => {
       });
     }
 
+    Recipe.updateOne({ _id: recipe._id }, { $inc: { views: 1 } }).catch(
+      () => {},
+    );
+
     const user = await User.findById(req.user._id);
 
     let isFavorite = false;
