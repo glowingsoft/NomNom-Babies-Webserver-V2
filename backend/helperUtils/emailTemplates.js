@@ -3,6 +3,27 @@ const BRAND_COLOR = "#F2692B";
 const OTP_EXPIRY_MINUTES = 10;
 const currentYear = new Date().getFullYear();
 
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const toHtmlText = (value) =>
+  escapeHtml(value).split(/\r\n|\r|\n/).join("<br />");
+
+const EMAIL_LOGO_CID = "nomnom-logo";
+
+const logoBadge = (width = 120) => `<table role="presentation" cellpadding="0" cellspacing="0" align="center">
+                  <tr>
+                    <td align="center" bgcolor="#ffffff" style="background:#ffffff;border-radius:14px;padding:10px 18px;">
+                      <img src="cid:${EMAIL_LOGO_CID}" width="${width}" alt="${APP_NAME}" style="display:block;border:0;outline:none;height:auto;" />
+                    </td>
+                  </tr>
+                </table>`;
+
 const iconBackground = () =>
   process.env.EMAIL_ICON_URL
     ? `background-image:url('${process.env.EMAIL_ICON_URL}');background-repeat:repeat;background-position:center;background-size:64px 64px;`
@@ -22,8 +43,8 @@ const otpEmailLayout = ({ title, intro, otp }) => `
         <td align="center">
           <table width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;">
             <tr>
-              <td style="background:${BRAND_COLOR};color:#ffffff;text-align:center;padding:20px;">
-                <h2 style="margin:0;font-size:22px;">${APP_NAME}</h2>
+              <td align="center" bgcolor="${BRAND_COLOR}" style="background:${BRAND_COLOR};color:#ffffff;text-align:center;padding:22px 20px;">
+                ${logoBadge(110)}
               </td>
             </tr>
             <tr>
@@ -97,6 +118,7 @@ const stripeEmailTemplate = ({ name, link }) => `
     <body>
       <div class="email-container">
         <div class="email-header">
+          <div style="padding:14px 0 6px;">${logoBadge(110)}</div>
           <h2>Stripe Account Completion</h2>
         </div>
         <div class="email-body">
@@ -152,7 +174,92 @@ const stripeEmailTemplate = ({ name, link }) => `
   </html>
 `;
 
+const supportReplyEmailTemplate = ({
+  name,
+  subject,
+  reply,
+  originalMessage,
+  reference,
+  submittedAt,
+}) => {
+  const preheader = escapeHtml(String(reply).replace(/\s+/g, " ").slice(0, 110));
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Re: ${escapeHtml(subject)}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f4f1ee;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#2b2b2b;-webkit-text-size-adjust:100%;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#f4f1ee;">${preheader}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f1ee" style="background:#f4f1ee;padding:28px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;">
+            <tr>
+              <td align="center" bgcolor="${BRAND_COLOR}" style="background:${BRAND_COLOR};padding:26px 24px 22px;">
+                ${logoBadge(120)}
+                <div style="margin-top:12px;font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#ffffff;opacity:0.9;">Customer Support</div>
+              </td>
+            </tr>
+            <tr>
+              <td height="4" bgcolor="#D9531A" style="background:#D9531A;font-size:0;line-height:0;">&nbsp;</td>
+            </tr>
+            <tr>
+              <td style="padding:32px 36px 8px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="font-size:12px;color:#8a8a8a;">Reference <strong style="color:#555;">${escapeHtml(reference)}</strong></td>
+                    <td align="right"><span style="display:inline-block;background:#e6f6ee;color:#15803d;font-size:12px;font-weight:bold;padding:4px 12px;border-radius:999px;">Replied</span></td>
+                  </tr>
+                </table>
+                <h1 style="margin:18px 0 6px;font-size:22px;line-height:1.3;color:#222222;">We've replied to your message</h1>
+                <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#555555;">Hello ${escapeHtml(name)}, thanks for getting in touch. Here is our answer:</p>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td bgcolor="#FFF4EE" style="background:#FFF4EE;border-left:4px solid ${BRAND_COLOR};border-radius:8px;padding:18px 20px;font-size:15.5px;line-height:1.7;color:#2b2b2b;">${toHtmlText(reply)}</td>
+                  </tr>
+                </table>
+                <p style="margin:24px 0 0;font-size:15px;line-height:1.6;color:#2b2b2b;">Kind regards,<br /><strong>The ${APP_NAME} Support Team</strong></p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 36px 8px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td bgcolor="#f7f7f8" style="background:#f7f7f8;border-radius:10px;padding:16px 18px;">
+                      <div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#9a9a9a;margin-bottom:8px;">Your original message${submittedAt ? ` &middot; ${escapeHtml(submittedAt)}` : ""}</div>
+                      <div style="font-size:14px;font-weight:bold;color:#444444;margin-bottom:6px;">${escapeHtml(subject)}</div>
+                      <div style="font-size:14px;line-height:1.6;color:#666666;">${toHtmlText(originalMessage)}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 36px 32px;font-size:13px;line-height:1.6;color:#777777;">
+                Still need help? Contact us from the ${APP_NAME} app and mention reference <strong>${escapeHtml(reference)}</strong>.
+              </td>
+            </tr>
+            <tr>
+              <td align="center" bgcolor="#fafafa" style="background:#fafafa;padding:18px 24px;font-size:12px;line-height:1.6;color:#8a8a8a;">
+                You received this email because you contacted ${APP_NAME} support.<br />
+                &copy; ${currentYear} ${APP_NAME}. All rights reserved.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+};
+
 module.exports = {
+  supportReplyEmailTemplate,
+  EMAIL_LOGO_CID,
   registrationOtpEmailTemplate,
   forgotPasswordOtpEmailTemplate,
   stripeEmailTemplate,

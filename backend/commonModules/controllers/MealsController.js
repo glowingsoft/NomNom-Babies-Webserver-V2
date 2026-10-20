@@ -9,6 +9,7 @@ const {
 } = require("@utils/responseUtil");
 
 const { logActivity } = require("@utils/activityUtil");
+const { statusCounts } = require("@utils/statusCounts");
 
 const adminGetMeals = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
@@ -111,11 +112,15 @@ const adminGetMeals = async (req, res) => {
       Meals.countDocuments(matchQuery),
     ]);
 
-    const meta = generateMeta(
-      page,
-      limit,
-      totalRecords,
-    );
+    const counts = await statusCounts(Meals, {
+      statuses: ["active", "disabled"],
+      defaultStatus: "active",
+    });
+
+    const meta = {
+      ...generateMeta(page, limit, totalRecords),
+      counts,
+    };
 
     return sendResponse({
       res,

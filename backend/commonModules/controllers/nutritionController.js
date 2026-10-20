@@ -10,6 +10,7 @@ const {
 } = require("@utils/responseUtil");
 const { logActivity } = require("@utils/activityUtil");
 const { lookupMany } = require("@utils/aggregationUtil");
+const { statusCounts } = require("@utils/statusCounts");
 
 const activeNutritionTag = (tag = "$$this") => ({
   $and: [
@@ -186,7 +187,7 @@ const adminGetNutritions = async (req, res) => {
               {
                 $match: {
                   $expr: {
-                    $in: ["$$nutritionId", "$nutritionTags"],
+                    $in: ["$$nutritionId", { $ifNull: ["$nutritionTags", []] }],
                   },
                 },
               },
@@ -243,7 +244,12 @@ const adminGetNutritions = async (req, res) => {
       Nutrition.countDocuments(query),
     ]);
 
-    const meta = generateMeta(page, limit, totalRecords);
+    const counts = await statusCounts(Nutrition, {
+      statuses: ["active", "disabled"],
+      defaultStatus: "active",
+    });
+
+    const meta = { ...generateMeta(page, limit, totalRecords), counts };
 
     return sendResponse({
       res,

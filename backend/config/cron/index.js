@@ -2,7 +2,9 @@ const cron = require("node-cron");
 const { acquireLock, releaseLock } = require("../redis/redisCache");
 
 const { runEventReminderCron } = require("./events/eventReminder.cron");
+const { startSupportCron } = require("./support.cron");
 const startCrons = () => {
+  startSupportCron();
 
   cron.schedule("* * * * *", async () => {
     const lockKey = "cron:event-reminders";

@@ -1,3 +1,4 @@
+const { statusCounts } = require("@utils/statusCounts");
 const Country = require("@models/Country");
 const Recipe = require("@models/Recipe");
 const { User } = require("@models/UserModel");
@@ -444,7 +445,12 @@ const adminGetCountries = async (req, res) => {
       Country.countDocuments(query),
     ]);
 
-    const meta = generateMeta(page, limit, totalCountries);
+    const counts = await statusCounts(Country, {
+      statuses: ["active", "review", "disabled"],
+      defaultStatus: "active",
+    });
+
+    const meta = { ...generateMeta(page, limit, totalCountries), counts };
 
     return sendResponse({
       res,

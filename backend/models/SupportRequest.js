@@ -30,7 +30,7 @@ const supportRequestSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'responded', 'resolved', 'closed'],
+    enum: ['pending', 'open', 'responded', 'resolved', 'closed'],
     default: 'pending',
   },
 }, {

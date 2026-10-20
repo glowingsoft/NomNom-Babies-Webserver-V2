@@ -1,3 +1,4 @@
+const { statusCounts } = require("@utils/statusCounts");
 const Language = require("@models/Language");
 const { User } = require("@models/UserModel");
 const {
@@ -134,7 +135,13 @@ const getLanguages = async (req, res) => {
       active: item.active,
     }));
 
-    const meta = generateMeta(page, limit, totalLanguages);
+    const counts = await statusCounts(Language, {
+      path: "active",
+      statuses: ["active", "inactive"],
+      booleanMap: { true: "active", false: "inactive" },
+    });
+
+    const meta = { ...generateMeta(page, limit, totalLanguages), counts };
 
     return sendResponse({
       res,

@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Recipe = require("@models/Recipe");
 const Nutrition = require("@models/Nutrition");
 const Country = require("@models/Country");
+const { statusCounts } = require("@utils/statusCounts");
 const BabyStage = require("@models/BabyStage");
 const Meals = require("@models/Meals");
 const {
@@ -669,7 +670,12 @@ const adminGetRecipes = async (req, res) => {
       Recipe.countDocuments(query),
     ]);
 
-    const meta = generateMeta(page, limit, totalRecords);
+    const counts = await statusCounts(Recipe, {
+      statuses: ["draft", "pending", "published", "archived"],
+      defaultStatus: "published",
+    });
+
+    const meta = { ...generateMeta(page, limit, totalRecords), counts };
 
     return sendResponse({
       res,

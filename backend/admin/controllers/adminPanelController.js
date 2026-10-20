@@ -47,7 +47,7 @@ const getDashboardCounts = async () => {
     BabyStage.countDocuments(),
     BabyStage.countDocuments({ active: true }),
     Nutrition.countDocuments(),
-    SupportRequest.countDocuments({ status: { $in: ["pending", "open"] } }),
+    SupportRequest.countDocuments({ status: "open" }),
     Activity.countDocuments({ action: "download" }),
   ]);
 

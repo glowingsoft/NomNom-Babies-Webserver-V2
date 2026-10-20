@@ -8,6 +8,45 @@ const {
 var SibApiV3Sdk = require("sib-api-v3-sdk");
 
 const DEFAULT_APP_NAME = "NomNom Babies";
+const EMAIL_LOGO_CID = "nomnom-logo";
+
+/**
+ * Templates reference the logo as <img src="cid:nomnom-logo">. Email clients can't
+ * load files from our server, so the logo is attached inline when a body uses it.
+ * If the logo can't be prepared, the image tag is swapped for the brand name.
+ */
+const withInlineLogo = async (body, attachments = []) => {
+  if (typeof body !== "string" || !body.includes(`cid:${EMAIL_LOGO_CID}`)) {
+    return { body, attachments };
+  }
+
+  const { getLogo } = require("./downloadPdf/logo");
+  const logo = await getLogo();
+
+  if (!logo) {
+    return {
+      body: body.replace(
+        new RegExp(`<img[^>]*cid:${EMAIL_LOGO_CID}[^>]*>`, "g"),
+        `<span style="font-size:22px;font-weight:bold;color:#F2692B;">${DEFAULT_APP_NAME}</span>`,
+      ),
+      attachments,
+    };
+  }
+
+  return {
+    body,
+    attachments: [
+      ...attachments,
+      {
+        content: logo.toString("base64"),
+        filename: "nomnom-logo.png",
+        type: "image/png",
+        disposition: "inline",
+        content_id: EMAIL_LOGO_CID,
+      },
+    ],
+  };
+};
 
 const sesClient = new SESClient({
   region: process.env.AWS_EMAIL_REGION,
@@ -126,9 +165,13 @@ const sendEmailViaSgrid = async (title, emails, subject, body, config = {}) => {
 
     const {
       fromEmail = process.env.SENDGRID_SENDER_EMAIL,
-      attachments = [],
+      attachments: baseAttachments = [],
       isHtml = true,
     } = config;
+
+    const { body: finalBody, attachments } = isHtml
+      ? await withInlineLogo(body, baseAttachments)
+      : { body, attachments: baseAttachments };
 
     const msg = {
       to: emails,
@@ -137,7 +180,7 @@ const sendEmailViaSgrid = async (title, emails, subject, body, config = {}) => {
         name: emailTitle,
       },
       subject: subject,
-      [isHtml ? "html" : "text"]: body,
+      [isHtml ? "html" : "text"]: finalBody,
       attachments: attachments,
     };
     console.log(msg);

@@ -6,12 +6,20 @@ const {
   generateMeta,
 } = require("../../helperUtils/responseUtil");
 const { logActivity } = require("@utils/activityUtil");
+const { statusCounts } = require("@utils/statusCounts");
+const { closeStalePendingRequests } = require("@utils/supportAutoClose");
+const { sendEmailViaSgrid } = require("@utils/emailUtil");
+const { supportReplyEmailTemplate } = require("@utils/emailTemplates");
+
+const ADMIN_SETTABLE_STATUSES = ["open", "resolved"];
 
 const getSupportRequests = async (req, res) => {
   try {
     const { page, limit, skip } = parsePaginationParams(req);
 
     const { keyword = "", status = "all" } = req.query;
+
+    await closeStalePendingRequests().catch(() => {});
 
     const query = {};
 
@@ -35,12 +43,10 @@ const getSupportRequests = async (req, res) => {
       .skip(skip)
       .limit(limit);
 
-    const counts = {
-      pending: await SupportRequest.countDocuments({ status: "pending" }),
-      responded: await SupportRequest.countDocuments({ status: "responded" }),
-      resolved: await SupportRequest.countDocuments({ status: "resolved" }),
-      closed: await SupportRequest.countDocuments({ status: "closed" }),
-    };
+    const counts = await statusCounts(SupportRequest, {
+      statuses: ["pending", "open", "responded", "resolved", "closed"],
+      defaultStatus: "pending",
+    });
 
     return sendResponse({
       res,
@@ -71,6 +77,15 @@ const updateSupportStatus = async (req, res) => {
   )
     return;
 
+  if (!ADMIN_SETTABLE_STATUSES.includes(req.body.status)) {
+    return sendResponse({
+      res,
+      statusCode: 400,
+      translationKey: "invalid_status",
+      values: { allowed: ADMIN_SETTABLE_STATUSES.join(", ") },
+    });
+  }
+
   const support = await SupportRequest.findByIdAndUpdate(
     req.params.id,
     {
@@ -90,6 +105,8 @@ const updateSupportStatus = async (req, res) => {
     });
   }
   void logActivity({
+    user: req.user._id,
+    userType: req.user.userType,
     action: "update",
     detail: `Updated support request status to ${support.status}`,
     module: "support",
@@ -128,6 +145,8 @@ const deleteSupportRequest = async (req, res) => {
   }
 
   void logActivity({
+    user: req.user._id,
+    userType: req.user.userType,
     action: "delete",
     detail: `Deleted support request: ${support.subject}`,
     module: "support",
@@ -146,8 +165,90 @@ const deleteSupportRequest = async (req, res) => {
   });
 };
 
+const replyToSupportRequest = async (req, res) => {
+  if (
+    !validateParams(req, res, {
+      pathParams: ["id"],
+      objectIdFields: ["id"],
+    })
+  )
+    return;
+
+  const message =
+    typeof req.body?.message === "string" ? req.body.message.trim() : "";
+
+  if (!message) {
+    return sendResponse({
+      res,
+      statusCode: 400,
+      translationKey: "reply_message_required",
+    });
+  }
+
+  const support = await SupportRequest.findById(req.params.id);
+
+  if (!support) {
+    return sendResponse({
+      res,
+      statusCode: 404,
+      translationKey: "not_found",
+    });
+  }
+
+  try {
+    await sendEmailViaSgrid(
+      "NomNom Babies Support",
+      [support.email],
+      `Re: ${support.subject}`,
+      supportReplyEmailTemplate({
+        name: support.name,
+        subject: support.subject,
+        reply: message,
+        originalMessage: support.message,
+        reference: `#${String(support._id).slice(-6).toUpperCase()}`,
+        submittedAt: new Date(support.createdAt).toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        }),
+      }),
+    );
+  } catch (error) {
+    return sendResponse({
+      res,
+      statusCode: 500,
+      translationKey: "email_send_failed",
+      error: error.message,
+    });
+  }
+
+  support.status = "responded";
+  await support.save();
+
+  void logActivity({
+    user: req.user._id,
+    userType: req.user.userType,
+    action: "reply",
+    detail: `Replied to support request: ${support.subject}`,
+    module: "support",
+    targetId: support._id,
+    metadata: {
+      subject: support.subject,
+      email: support.email,
+      status: support.status,
+    },
+  });
+
+  return sendResponse({
+    res,
+    translationKey: "reply_sent_successfully",
+    data: support,
+  });
+};
+
 module.exports = {
   getSupportRequests,
   updateSupportStatus,
+  replyToSupportRequest,
   deleteSupportRequest,
 };

@@ -1,3 +1,4 @@
+const { statusCounts } = require("@utils/statusCounts");
 const BabyStage = require("@models/BabyStage");
 const Baby = require("@models/Baby");
 const { User } = require("@models/UserModel");
@@ -220,7 +221,13 @@ const adminGetBabyStages = async (req, res) => {
       recipes: recipeMap[stage._id.toString()] || 0,
     }));
 
-    const meta = generateMeta(page, limit, totalStages);
+    const counts = await statusCounts(BabyStage, {
+      path: "active",
+      statuses: ["active", "disabled"],
+      booleanMap: { true: "active", false: "disabled" },
+    });
+
+    const meta = { ...generateMeta(page, limit, totalStages), counts };
 
     return sendResponse({
       res,

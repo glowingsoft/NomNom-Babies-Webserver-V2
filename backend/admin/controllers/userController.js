@@ -20,6 +20,7 @@ const Subscription = require("@models/Subscription");
 const FeedingLog = require("@models/FeedingLog");
 const FeedingSchedule = require("@models/FeedingSchedule");
 const GroceryList = require("@models/GroceryList");
+const { statusCounts } = require("@utils/statusCounts");
 const Country = require("@models/Country");
 const BabyStage = require("@models/BabyStage");
 const {
@@ -167,12 +168,22 @@ const allUsers = async (req, res) => {
       };
     });
 
+    const counts = await statusCounts(User, {
+      path: "accountState.status",
+      defaultStatus: "active",
+      statuses: ["active", "inactive", "suspended", "restricted"],
+      match: {
+        "accountState.userType": { $ne: "admin" },
+        "accountState.status": { $nin: ["softDeleted", "hardDeleted"] },
+      },
+    });
+
     return sendResponse({
       res,
       statusCode: 200,
       translationKey: "users_fetched_successfully",
       data: formattedUsers,
-      meta: generateMeta(page, limit, totalRecords),
+      meta: { ...generateMeta(page, limit, totalRecords), counts },
     });
   } catch (error) {
     sendResponse({

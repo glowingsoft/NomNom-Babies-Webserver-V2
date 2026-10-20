@@ -5995,13 +5995,43 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n    \"status\": \"responded\"\n}",
+                  "raw": "{\n    \"status\": \"open\"\n}",
                   "options": {
                     "raw": {
                       "language": "json"
                     }
                   }
-                }
+                },
+                "description": "Admins can set only \"open\" or \"resolved\". pending is set when the customer creates the request, responded by POST .../reply, closed automatically after 15 days pending. Any other value returns 400 and leaves the status unchanged."
+              },
+              "response": []
+            },
+            {
+              "name": "Reply to support request",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"message\": \"Hi, thanks for reaching out. We have fixed the issue.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{url}}admin/support/{{supportId}}/reply",
+                  "host": [
+                    "{{url}}admin"
+                  ],
+                  "path": [
+                    "support",
+                    "{{supportId}}",
+                    "reply"
+                  ]
+                },
+                "description": "Emails the reply to the support request address (subject: Re: <request subject>), sets the request status to responded and logs the activity. 400 if message is empty, 404 if the id is unknown, 500 (status unchanged) if the email cannot be sent."
               },
               "response": []
             },
