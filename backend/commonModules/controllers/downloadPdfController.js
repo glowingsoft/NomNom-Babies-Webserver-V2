@@ -245,8 +245,6 @@ const downloadGroceryPdf = async (req, res) => {
       });
     }
 
-    ////////////////////////////////////////////
-
     const recipesIncluded = grocery.recipes.map((recipe) => ({
       recipeId: recipe.recipe._id,
 
@@ -254,8 +252,6 @@ const downloadGroceryPdf = async (req, res) => {
 
       image: recipe.recipe.image || "",
     }));
-
-    ////////////////////////////////////////////
 
     const groceryChecklist = [];
 
@@ -290,15 +286,11 @@ const downloadGroceryPdf = async (req, res) => {
       });
     });
 
-    ////////////////////////////////////////////
-
     const ingredientCategories = Object.keys(categoriesMap).map((category) => ({
       category,
 
       items: [...new Set(categoriesMap[category])],
     }));
-
-    ////////////////////////////////////////////
 
     const groceryResponse = {
       recipesIncluded,
@@ -563,4 +555,4 @@ module.exports = {
   downloadGroceryPdf,
   getDownloadedPdfs,
 };
-
+

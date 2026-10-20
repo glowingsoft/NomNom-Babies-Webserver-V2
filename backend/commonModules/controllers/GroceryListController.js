@@ -12,7 +12,6 @@ const {
   validateParams,
 } = require("@utils/responseUtil");
 
-// Add recipe ingredients to grocery list
 const addRecipeToGroceryList = async (req, res) => {
   try {
     const { recipeId, ingredientIds } = req.body;
@@ -125,7 +124,6 @@ const addRecipeToGroceryList = async (req, res) => {
   }
 };
 
-// Get grocery list
 const getGroceryList = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
@@ -311,7 +309,6 @@ const updateIngredientStatus = async (req, res) => {
   }
 };
 
-// Update item checked status
 const updateGroceryItems = async (req, res) => {
   try {
     const { selectedItems, checked } = req.body;
@@ -482,7 +479,6 @@ const removeRecipeFromGroceryList = async (req, res) => {
   }
 };
 
-// Remove item
 const removeGroceryItem = async (req, res) => {
   try {
     const { itemId } = req.params;
@@ -573,7 +569,6 @@ const removeGroceryItem = async (req, res) => {
   }
 };
 
-// Clear list
 const clearGroceryList = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -632,11 +627,6 @@ const clearGroceryList = async (req, res) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ADMIN
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Get all grocery lists (one per user who has created one)
 const adminGetGroceryLists = async (req, res) => {
   try {
     const { page, limit, skip } = parsePaginationParams(req);
@@ -697,7 +687,6 @@ const adminGetGroceryLists = async (req, res) => {
   }
 };
 
-// Get a single grocery list by its id
 const adminGetGroceryListById = async (req, res) => {
   try {
     if (

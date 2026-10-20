@@ -23,11 +23,11 @@ const feedingScheduleSchema = new mongoose.Schema(
     },
     time: {
       type: String,
-      required: true, // e.g. "07:00 AM"
+      required: true,
     },
     title: {
       type: String,
-      required: true, // e.g. "Morning Feed"
+      required: true,
     },
     description: {
       type: String,

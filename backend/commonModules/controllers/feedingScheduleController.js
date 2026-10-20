@@ -11,7 +11,6 @@ const mongoose = require("mongoose");
 const { User } = require("@models/UserModel");
 const { logActivity } = require("@utils/activityUtil");
 
-// Get feeding schedule for active baby on a given date
 const getFeedingSchedule = async (req, res) => {
   try {
     if (!validateParams(req, res, { queryParams: ["date"] })) return;
@@ -136,7 +135,6 @@ const removeScheduleSlot = async (req, res) => {
   }
 };
 
-// Create feeding schedule for a baby
 const createFeedingSchedule = async (req, res) => {
   try {
     if (
@@ -211,7 +209,6 @@ const createFeedingSchedule = async (req, res) => {
   }
 };
 
-// Update feeding schedule slots
 const updateFeedingSchedule = async (req, res) => {
   try {
     if (
@@ -288,7 +285,6 @@ const updateFeedingSchedule = async (req, res) => {
   }
 };
 
-// Delete feeding schedule
 const deleteFeedingSchedule = async (req, res) => {
   try {
     if (
@@ -431,7 +427,6 @@ const getUserBabyFeedingSchedule = async (req, res) => {
   }
 };
 
-// Mark / unmark a slot as completed for a given date
 const toggleSlotCompletion = async (req, res) => {
   try {
     if (

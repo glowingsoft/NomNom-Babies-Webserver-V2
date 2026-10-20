@@ -14,14 +14,7 @@ const {
 const roleMiddleware = require("@middlewares/roleMiddleware");
 const router = express.Router();
 
-// Apply auth middleware to the router
 router.use(auth);
-
-// // Specify the fields you want to populate dynamically
-// const fieldsToPopulate = [
-//   "profileIcon",
-//   "age",
-// ];
 
 router.get("/profile", (req, res, next) => {
   getUserProfile(req, res, next);

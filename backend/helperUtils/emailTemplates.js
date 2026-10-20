@@ -1,17 +1,13 @@
-// emailTemplate.js
 const APP_NAME = "NomNom Babies";
 const BRAND_COLOR = "#F2692B";
 const OTP_EXPIRY_MINUTES = 10;
 const currentYear = new Date().getFullYear();
 
-// Public https URL of the NomNom Babies icon (S3/CDN). Email clients cannot load local files.
-// Set EMAIL_ICON_URL in .env; when unset, the email renders without the background icon.
 const iconBackground = () =>
   process.env.EMAIL_ICON_URL
     ? `background-image:url('${process.env.EMAIL_ICON_URL}');background-repeat:repeat;background-position:center;background-size:64px 64px;`
     : "";
 
-// Shared layout for all OTP emails (inline styles for email-client compatibility)
 const otpEmailLayout = ({ title, intro, otp }) => `
 <!DOCTYPE html>
 <html>
@@ -54,7 +50,6 @@ const otpEmailLayout = ({ title, intro, otp }) => `
   </body>
 </html>`;
 
-// Account verification / registration OTP
 const registrationOtpEmailTemplate = (otp) =>
   otpEmailLayout({
     title: `Welcome to ${APP_NAME}`,
@@ -62,7 +57,6 @@ const registrationOtpEmailTemplate = (otp) =>
     otp,
   });
 
-// Forgot password OTP
 const forgotPasswordOtpEmailTemplate = (otp) =>
   otpEmailLayout({
     title: "Reset your password",
@@ -158,7 +152,6 @@ const stripeEmailTemplate = ({ name, link }) => `
   </html>
 `;
 
-// Export both functions
 module.exports = {
   registrationOtpEmailTemplate,
   forgotPasswordOtpEmailTemplate,

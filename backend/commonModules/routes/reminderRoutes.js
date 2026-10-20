@@ -18,12 +18,10 @@ const createLimiter = createRateLimiter("createReminder", 15, 15);
 const updateLimiter = createRateLimiter("updateReminder", 15, 15);
 const deleteLimiter = createRateLimiter("deleteReminder", 15, 15);
 
-// APP
 router.get("/recent", auth, getRecentReminders);
 
 router.get("/:reminderId", auth, getReminderDetail);
 
-// ADMIN
 router.get("/admin/all", auth, roleMiddleware(["admin"]), getAllReminders);
 
 router.get(

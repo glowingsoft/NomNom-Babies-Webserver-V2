@@ -16,5 +16,4 @@ const roleMiddleware = (allowedRoles) => (req, res, next) => {
 };
 
 module.exports = roleMiddleware;
-
-//e.g usage app.use("/shared-route", roleMiddleware(["admin", "trainer"]), (req, res) => {
+

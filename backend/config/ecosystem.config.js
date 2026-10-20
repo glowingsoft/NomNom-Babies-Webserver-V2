@@ -1,15 +1,9 @@
 const fs = require("fs");
 const path = require("path");
 
-/**
- * Root log directory
- */
 const LOG_ROOT = path.resolve(__dirname, "../../logs");
 const PM2_LOG_DIR = path.join(LOG_ROOT, "pm2");
 
-/**
- * PM2 will NOT create folders — we must
- */
 if (!fs.existsSync(LOG_ROOT)) {
   fs.mkdirSync(LOG_ROOT, { recursive: true });
 }
@@ -21,10 +15,8 @@ if (!fs.existsSync(PM2_LOG_DIR)) {
 module.exports = {
   apps: [
     {
-      // Override per environment so dev and prod can share one host
       name: process.env.PM2_APP_NAME || "backend-server",
       script: "backend/server.js",
-      // Repo root, so .env.<NODE_ENV> and module aliases resolve correctly
       cwd: path.resolve(__dirname, "../.."),
 
       exec_mode: "cluster",
@@ -37,9 +29,6 @@ module.exports = {
       restart_delay: 2000,
       exp_backoff_restart_delay: 100,
 
-      /**
-       * PM2-managed logs
-       */
       output: path.join(PM2_LOG_DIR, "out.log"),
       error: path.join(PM2_LOG_DIR, "error.log"),
       log_date_format: "YYYY-MM-DD HH:mm:ss",

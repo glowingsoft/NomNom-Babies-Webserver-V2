@@ -13,10 +13,9 @@ const { userCache } = require("@config/nodeCache");
 const Baby = require("@models/Baby");
 const { babyPopulate, getBabyInfo } = require("@utils/babyUtil");
 
-// Block User Function
 const blockUser = async (req, res) => {
   const { _id } = req.user;
-  const { userIdToBlock } = req.params; // ID of the user to block
+  const { userIdToBlock } = req.params;
 
   const validationOptions = {
     pathParams: ["userIdToBlock"],
@@ -24,7 +23,7 @@ const blockUser = async (req, res) => {
   };
 
   if (!validateParams(req, res, validationOptions)) {
-    return; // Validation failed, response already sent
+    return;
   }
   if (_id.equals(userIdToBlock)) {
     return sendResponse({
@@ -47,7 +46,6 @@ const blockUser = async (req, res) => {
       });
     }
 
-    // Check if already blocked
     if (currentUser.blockedUsers.includes(userIdToBlock)) {
       return sendResponse({
         res,
@@ -56,10 +54,8 @@ const blockUser = async (req, res) => {
       });
     }
 
-    // Add the user to the blocked list of the current user
     currentUser.blockedUsers.push(userIdToBlock);
 
-    // Save the current user
     await currentUser.save();
 
     return sendResponse({
@@ -77,10 +73,9 @@ const blockUser = async (req, res) => {
   }
 };
 
-// Report User Function
 const reportUser = async (req, res) => {
   const currentUser = req.user;
-  const { userIdToReport } = req.params; // ID of the user to report
+  const { userIdToReport } = req.params;
 
   const validationOptions = {
     pathParams: ["userIdToReport"],
@@ -88,7 +83,7 @@ const reportUser = async (req, res) => {
   };
 
   if (!validateParams(req, res, validationOptions)) {
-    return; // Validation failed, response already sent
+    return;
   }
   if (currentUser._id.equals(userIdToReport)) {
     return sendResponse({
@@ -108,7 +103,6 @@ const reportUser = async (req, res) => {
       });
     }
 
-    // Check if current user has already reported this user
     if (userToReport.reportedBy.includes(currentUser._id)) {
       return sendResponse({
         res,
@@ -117,13 +111,10 @@ const reportUser = async (req, res) => {
       });
     }
 
-    // Add current user's ID to the reportedBy list
     userToReport.reportedBy.push(currentUser._id);
 
-    // Increment the report count
     userToReport.reportCount += 1;
 
-    // Check if user should be suspended
     if (userToReport.reportCount >= 10) {
       userToReport.accountState.status = "suspended";
       userToReport.accountState.reason =
@@ -131,7 +122,6 @@ const reportUser = async (req, res) => {
       userToReport.accountState.suspensionDate = new Date();
     }
 
-    // Save the reported user
     await userToReport.save();
 
     return sendResponse({
@@ -149,14 +139,11 @@ const reportUser = async (req, res) => {
   }
 };
 
-// Add or update a subscription for a user
 const addOrUpdateSubscription = async (req, res) => {
   const { type } = req.body;
   const { _id } = req.user;
 
-  // Validate subscription type
   if (!Object.values(SubscriptionType).includes(type)) {
-    // Convert SubscriptionType values to an array
     const validSubscriptionTypes = Object.values(SubscriptionType);
     const errorMessage =
       "Invalid subscription type. Valid types are: " +
@@ -170,13 +157,11 @@ const addOrUpdateSubscription = async (req, res) => {
 
   try {
     const user = await User.findById(_id).select("subscriptions");
-    // Check if the subscription already exists
     const existingSubscription = user.subscriptions.find(
-      (sub) => sub.type === type, // Use 'type' instead of 'status'
+      (sub) => sub.type === type,
     );
 
     if (existingSubscription) {
-      // Update the expiry date based on subscription type
       if (type === SubscriptionType.BLOOM_AGAIN_ESSENTIALS) {
         existingSubscription.endDate = moment(existingSubscription.endDate)
           .add(1, "month")
@@ -187,7 +172,6 @@ const addOrUpdateSubscription = async (req, res) => {
           .toDate();
       }
     } else {
-      // Add new subscription
       let endDate = null;
       if (type === SubscriptionType.BLOOM_AGAIN_ESSENTIALS) {
         endDate = moment().add(1, "month").toDate();
@@ -196,13 +180,12 @@ const addOrUpdateSubscription = async (req, res) => {
       }
 
       user.subscriptions.push({
-        type, // Correct 'type' field
+        type,
         startDate: new Date(),
         endDate,
       });
     }
 
-    // Save the user with the updated subscription
     await user.save();
 
     return sendResponse({
@@ -222,13 +205,11 @@ const addOrUpdateSubscription = async (req, res) => {
   }
 };
 
-// Remove a subscription
 const removeSubscription = async (req, res) => {
   const { _id: userId } = req.user;
   const { subscriptionId } = req.params;
 
   try {
-    // Find and remove the subscription
     const user = await User.findById(userId).select("subscriptions");
     const subscriptionIndex = user.subscriptions.findIndex(
       (sub) => sub._id.toString() === subscriptionId,
@@ -243,7 +224,6 @@ const removeSubscription = async (req, res) => {
 
     user.subscriptions.splice(subscriptionIndex, 1);
 
-    // Save the user after removing the subscription
     await user.save();
 
     return sendResponse({
@@ -261,7 +241,6 @@ const removeSubscription = async (req, res) => {
   }
 };
 
-// Get all subscriptions for a user
 const getSubscriptions = async (req, res) => {
   const { _id } = req.user;
 
@@ -321,7 +300,6 @@ const getSubscriptions = async (req, res) => {
   }
 };
 
-// Create a mapping for all possible fields and their respective collections
 const populationFields = {};
 
 /**
@@ -334,7 +312,6 @@ const getUserWithPopulatedFields = async (userId, fieldsToPopulate = []) => {
   try {
     let query = User.findById(userId);
 
-    // Build the dynamic population based on the fields requested
     fieldsToPopulate.forEach((field) => {
       const populationConfig = populationFields[field];
       if (populationConfig) {
@@ -342,12 +319,11 @@ const getUserWithPopulatedFields = async (userId, fieldsToPopulate = []) => {
       }
     });
 
-    // Execute the query and return the populated user
     const user = await query.exec();
-    return user; // Return the user object
+    return user;
   } catch (error) {
     console.error("Error fetching user:", error);
-    throw new Error("User fetch error"); // Let the middleware handle the error response
+    throw new Error("User fetch error");
   }
 };
 
@@ -366,7 +342,6 @@ const getUserProfile = async (req, res, next, fieldsToPopulate = []) => {
       "_id name signatureFoods",
     );
 
-    // Build the dynamic population based on the fields requested
     if (fieldsToPopulate.length > 0) {
       fieldsToPopulate.forEach((field) => {
         const populationConfig = populationFields[field];
@@ -379,7 +354,6 @@ const getUserProfile = async (req, res, next, fieldsToPopulate = []) => {
       });
     }
 
-    // Execute the query and return the populated user
     const user = await query.exec();
 
     if (!user) {
@@ -446,13 +420,10 @@ const getOtherUserProfile = async (req, res, next) => {
       ["resetToken", "accountState", "metadata"],
     );
 
-    // Include phone number if there are bookings with status "booked" or "picked"
-    // if (bookings.length > 0) {
     response.contactInfo = {
       phoneNumber: user.phoneNumber,
       verificationStatus: user.verificationStatus.phoneNumber,
     };
-    // }
 
     response.recentReviews = recentReviews;
 
@@ -535,12 +506,10 @@ const updateUserProfile = async (req, res, next) => {
       user.distanceUnit = distanceUnit;
     }
 
-    // Update fields if provided
     if (name && name.trim() !== "") user.name = name;
     if (parentCaregiverName && parentCaregiverName.trim() !== "")
       user.parentCaregiverName = parentCaregiverName;
     if (phoneNumber) {
-      //validate phone using validator
       if (!validator.isMobilePhone(phoneNumber)) {
         return sendResponse({
           res,
@@ -552,7 +521,6 @@ const updateUserProfile = async (req, res, next) => {
     }
 
     if (location) {
-      // Validate location
       const { coordinates, fullAddress } = location;
       if (!coordinates || coordinates.length !== 2 || !fullAddress) {
         return sendResponse({
@@ -561,7 +529,6 @@ const updateUserProfile = async (req, res, next) => {
           translationKey: "invalid_location_1",
         });
       }
-      // Ensure coordinates are numbers
       const [longitude, latitude] = coordinates;
       if (typeof longitude !== "number" || typeof latitude !== "number") {
         return sendResponse({
@@ -585,7 +552,6 @@ const updateUserProfile = async (req, res, next) => {
       "_id name signatureFoods",
     );
 
-    // Agar update API mein bhi ye populate chahiye
     Object.keys(populationFields).forEach((field) => {
       const populationConfig = populationFields[field];
       if (populationConfig) {
@@ -619,8 +585,8 @@ const updateUserProfile = async (req, res, next) => {
     return sendResponse({
       res,
       statusCode: 500,
-      translationKey: "user_profile_update_error", // Use a translation key
-      values: { errorMessage: error.message }, // Pass the error message as a dynamic value
+      translationKey: "user_profile_update_error",
+      values: { errorMessage: error.message },
       error,
     });
   }

@@ -1,4 +1,3 @@
-// routes/supportRoutes.js
 const express = require("express");
 const {
   getSupportRequests,

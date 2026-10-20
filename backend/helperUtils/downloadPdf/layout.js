@@ -13,12 +13,6 @@ const {
   LOGO_SIZE,
 } = require("./constants");
 
-/**
- * Draws the orange page header. Title/subtitle are always centered,
- * and an optional logo is drawn to the left of the title.
- * The header remembers what was drawn so ensureSpace() can redraw an
- * identical header on new pages.
- */
 function drawHeader(doc, title, subtitle) {
   doc.save();
 
@@ -54,7 +48,6 @@ function drawHeader(doc, title, subtitle) {
 
   doc.y = 105;
 
-  // remember for page breaks
   doc._pdfHeaderTitle = title;
   doc._pdfHeaderSubtitle = subtitle;
 }
@@ -66,7 +59,6 @@ function ensureSpace(doc, requiredHeight = 120) {
   }
 }
 
-/** Centered section title with a centered underline beneath it. */
 function sectionTitle(doc, title) {
   ensureSpace(doc, 50);
 
@@ -93,12 +85,6 @@ function sectionTitle(doc, title) {
   doc.moveDown();
 }
 
-/**
- * Generic bordered card that draws a list of label/value rows and
- * sizes itself to fit the content (fixes the "card + next section
- * squashed together" issue — height is never hardcoded).
- * rows: [[label, value], ...]
- */
 function infoCard(doc, rows) {
   const paddingY = 14;
   const rowHeight = 18;
@@ -126,9 +112,8 @@ function infoCard(doc, rows) {
     y += rowHeight;
   });
 
-  doc.y = top + height + 20; // guaranteed breathing room before next section
+  doc.y = top + height + 20;
 }
-
 
 module.exports = {
   drawHeader,

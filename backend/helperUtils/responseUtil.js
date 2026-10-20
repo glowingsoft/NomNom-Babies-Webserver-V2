@@ -18,23 +18,17 @@ const sendResponse = ({
   meta = null,
   error = null,
   translateMessage = true,
-  values = {}, // Add values parameter for dynamic translation
+  values = {},
 }) => {
-  // Log the error regardless of the translation flag
 
-  // Prepare the response object
   const response = {};
   if (translateMessage) {
-    // Get the translation key from the locale file and replace the placeholders using the provided values
     let message = res?.req?.__(translationKey);
 
-    // If the message is missing, undefined, or equals the raw translationKey, fall back to translationKey
     if (!message || message.trim() === "" || message === translationKey) {
-      // Fallback: Convert key to readable text
       message = keyToReadableText(translationKey);
     }
 
-    // If values are provided, replace placeholders in the translation
     if (values && typeof values === "object") {
       Object.keys(values).forEach((key) => {
         const placeholder = `{${key}}`;
@@ -47,71 +41,58 @@ const sendResponse = ({
     response.message = translationKey;
   }
 
-  // Check if response.message is an empty object, and set a default message if so
   if (
     typeof response.message === "object" &&
     response.message !== null &&
     Object.keys(response.message).length === 0
   ) {
-    response.message = "Something went wrong"; // Default message for empty objects
+    response.message = "Something went wrong";
   }
 
-  // Ensure response.message is a string before using trim()
   if (typeof response.message === "string" && response.message.trim() === "") {
-    response.message = translationKey; // Fallback to translation key if the message is empty
+    response.message = translationKey;
   } else if (!response.message) {
-    // If response.message is undefined or null, set it to the translation key
     response.message = translationKey;
   }
-  // Include data in the response if provided
   if (data !== undefined && data !== null) {
-    // logger.log("Response Data:", data);
     response.data = data;
   }
 
-  // Include meta information if provided
   if (meta) {
     response.meta = meta;
   }
   if (process.env.NODE_ENV === "dev" || process.env.NODE_ENV === "localhost") {
     if (error !== null && error !== undefined) {
       if (error instanceof Error) {
-        // Extract important properties from the Error object
         response.error = {
           message: error.message,
-          stack: error.stack, // You may not want to include the stack trace in production
+          stack: error.stack,
           name: error.name,
         };
       } else if (typeof error === "object") {
         try {
-          // Serialize the object if it's not an instance of Error
           response.error = JSON.stringify(error);
         } catch (err) {
           response.error = "Error: Could not serialize the error object.";
         }
       } else {
-        // If the error is a primitive value (string, boolean, number, etc.)
         response.error = error;
       }
       console.log(error)
     }
   }
-  // Send the response with the appropriate status code
   res.status(statusCode).json(response);
 };
 
-// Helper: Convert key to readable default translation
 function keyToReadableText(key) {
   if (!key || typeof key !== "string" || key.trim() === "") return "";
   const withSpaces = key.replace(/[_\.]+/g, " ");
   return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1);
 }
 
-// Helper function to parse pagination parameters
 const parsePaginationParams = (req) => {
   let { page = 1, limit = 10 } = req.query;
 
-  // Parse page and limit as integers and ensure they are valid
   page = parseInt(page, 10);
   limit = parseInt(limit, 10);
 
@@ -122,7 +103,6 @@ const parsePaginationParams = (req) => {
     limit = 10;
   }
 
-  // Cap the limit to a maximum of 50
   if (limit > 100) {
     limit = 100;
   }
@@ -131,7 +111,6 @@ const parsePaginationParams = (req) => {
   return { page, limit, skip };
 };
 
-// Helper function to generate meta information
 const generateMeta = (page, limit, total) => {
   return {
     currentPage: page,
@@ -146,45 +125,26 @@ const validateObjectIdsArr = (res, ids, fieldNames) => {
     const id = ids[i];
     const fieldName = fieldNames[i];
 
-    // Check if ObjectId is valid
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      invalidParams.push(fieldName); // Add the field name to invalid params
+      invalidParams.push(fieldName);
     }
   }
 
-  // If invalid ObjectIds are found
   if (invalidParams.length > 0) {
     sendResponse({
       res,
       statusCode: 400,
-      translationKey: "invalid_object_ids", // Translation key
-      values: { fields: invalidParams.join(", ") }, // Pass invalid field names as values
+      translationKey: "invalid_object_ids",
+      values: { fields: invalidParams.join(", ") },
     });
     return false;
   }
 
-  return true; // All ObjectIds are valid
+  return true;
 };
 
-// Helper function to convert underscores to spaces
 const convertUnderscoresToSpaces = (str) => String(str).replace(/_/g, " ");
 
-// const validationOptions ={
-//   queryParams:["name","plan"],
-//   rawData:["title"],
-//   formFields:["age"],
-//   objectIdFields:["123"],
-//   dateFields: {
-//     startDate: "YYYY-MM-DD",
-//     endDate: "YYYY-MM-DD",
-//   },
-// }
-// if (!validateParams(req, res, validationOptions)) {
-//   return; // Invalid request data response already sent by validateParams
-// }
-
-// Generic validation function
-// Generic validation function
 const validateParams = (req, res, options = {}) => {
   const {
     queryParams = [],
@@ -194,12 +154,11 @@ const validateParams = (req, res, options = {}) => {
     objectIdFields = [],
     dateFields = {},
     timeFields = {},
-    enumFields = {}, // Field for enum validations
-    minLengthFields = {}, // Field for minimum length validations
-    locationFields = {}, // Field for location validations
+    enumFields = {},
+    minLengthFields = {},
+    locationFields = {},
   } = options;
 
-  // Validate query parameters
   const missingParamsQuery = [];
   for (const param of queryParams) {
     if (req.query[param]) {
@@ -215,13 +174,12 @@ const validateParams = (req, res, options = {}) => {
     sendResponse({
       res,
       statusCode: 400,
-      translationKey: "missing_query_parameters", // Use a general key from translations
-      values: { fields: missingParamsQuery.join(", ") }, // Pass the actual missing field as a value
+      translationKey: "missing_query_parameters",
+      values: { fields: missingParamsQuery.join(", ") },
     });
     return false;
   }
 
-  // Validate path parameters
   const missingParamsPath = [];
   for (const param of pathParams) {
     if (req.params[param]) {
@@ -237,13 +195,12 @@ const validateParams = (req, res, options = {}) => {
     sendResponse({
       res,
       statusCode: 400,
-      translationKey: "missing_path_parameters", // Use a general key from translations
-      values: { fields: missingParamsPath.join(", ") }, // Pass the actual missing field as a value
+      translationKey: "missing_path_parameters",
+      values: { fields: missingParamsPath.join(", ") },
     });
     return false;
   }
 
-  // Validate form fields
   const missingParamsForm = [];
   for (const param of formFields) {
     if (req.body[param]) {
@@ -257,13 +214,12 @@ const validateParams = (req, res, options = {}) => {
     sendResponse({
       res,
       statusCode: 400,
-      translationKey: "missing_form_fields", // Use a general key from translations
-      values: { fields: missingParamsForm.join(", ") }, // Pass the actual missing field as a value
+      translationKey: "missing_form_fields",
+      values: { fields: missingParamsForm.join(", ") },
     });
     return false;
   }
 
-  // Validate raw data
   const missingParamsRaw = [];
   for (const param of rawData) {
     const value = extractNestedFields(req.body, param);
@@ -274,8 +230,6 @@ const validateParams = (req, res, options = {}) => {
       typeof value === "boolean" ||
       (typeof value === "object" && value !== null)
     ) {
-      // Optional: You can still set camelCase version if needed, though nesting complicates this
-      // e.g., req.body[camelCase(param)] = value;
     } else {
       missingParamsRaw.push(param);
     }
@@ -285,13 +239,12 @@ const validateParams = (req, res, options = {}) => {
     sendResponse({
       res,
       statusCode: 400,
-      translationKey: "missing_raw_fields", // Use a general key from translations
-      values: { fields: missingParamsRaw.join(", ") }, // Pass the actual missing field as a value
+      translationKey: "missing_raw_fields",
+      values: { fields: missingParamsRaw.join(", ") },
     });
     return false;
   }
 
-  // Validate MongoDB ObjectId fields from different sources
   const objectIdsToValidate = [];
   const fieldNames = [];
 
@@ -304,7 +257,7 @@ const validateParams = (req, res, options = {}) => {
       if (Array.isArray(value)) {
         for (const val of value) {
           objectIdsToValidate.push(val);
-          fieldNames.push(field); // Indicate it's from an array
+          fieldNames.push(field);
         }
       } else {
         objectIdsToValidate.push(value);
@@ -317,7 +270,6 @@ const validateParams = (req, res, options = {}) => {
     return false;
   }
 
-  // Validate date fields (only verify format if available, don't check for missing)
   for (const [field, format] of Object.entries(dateFields)) {
     const dateValue =
       extractNestedFields(req.body, field) ||
@@ -329,14 +281,13 @@ const validateParams = (req, res, options = {}) => {
         sendResponse({
           res,
           statusCode: 400,
-          translationKey: "invalid_date_format", // Use translation key
-          values: { field, format }, // Replace placeholders with actual values
+          translationKey: "invalid_date_format",
+          values: { field, format },
         });
         return false;
       }
     }
   }
-  //time fields validation
   for (const [field, format] of Object.entries(timeFields)) {
     const timeValue =
       extractNestedFields(req.body, field) ||
@@ -348,8 +299,8 @@ const validateParams = (req, res, options = {}) => {
         sendResponse({
           res,
           statusCode: 400,
-          translationKey: "invalid_time_format", // Use translation key
-          values: { field, format }, // Replace placeholders with actual values
+          translationKey: "invalid_time_format",
+          values: { field, format },
         });
         return false;
       }
@@ -357,14 +308,13 @@ const validateParams = (req, res, options = {}) => {
       sendResponse({
         res,
         statusCode: 400,
-        translationKey: "missing_time_field", // Use translation key
-        values: { field }, // Pass the missing field as a value
+        translationKey: "missing_time_field",
+        values: { field },
       });
       return false;
     }
   }
 
-  // Validate enum fields
   for (const [field, allowedValues] of Object.entries(enumFields)) {
     const value =
       extractNestedFields(req.body, field) ||
@@ -373,7 +323,6 @@ const validateParams = (req, res, options = {}) => {
 
     if (value) {
       if (Array.isArray(value)) {
-        // Check if every item in the array is allowed
         const invalidValues = value.filter(v => !allowedValues.includes(v));
         if (invalidValues.length > 0) {
           sendResponse({
@@ -389,7 +338,6 @@ const validateParams = (req, res, options = {}) => {
           return false;
         }
       } else {
-        // Single value check
         if (Array.isArray(allowedValues) && allowedValues.length > 0) {
           if (!allowedValues.includes(value)) {
             sendResponse({
@@ -405,22 +353,18 @@ const validateParams = (req, res, options = {}) => {
     }
   }
 
-
-  // Validate minimum length fields
   for (const [field, minLength] of Object.entries(minLengthFields)) {
     const value = req.body[field] || req.params[field] || req.query[field];
     if (value && value.length < minLength) {
       sendResponse({
         res,
         statusCode: 400,
-        translationKey: "min_length_violation", // Use translation key
-        values: { field, minLength }, // Replace placeholders with actual values
+        translationKey: "min_length_violation",
+        values: { field, minLength },
       });
       return false;
     }
   }
-  //sample input
-  //location validation
   for (const [field, location] of Object.entries(locationFields)) {
     const value =
       extractNestedFields(req.body, field) ||
@@ -432,8 +376,8 @@ const validateParams = (req, res, options = {}) => {
         sendResponse({
           res,
           statusCode: 400,
-          translationKey: "invalid_location_format", // Use translation key
-          values: { field }, // Replace placeholders with actual values
+          translationKey: "invalid_location_format",
+          values: { field },
         });
         return false;
       }
@@ -449,8 +393,8 @@ const validateParams = (req, res, options = {}) => {
         sendResponse({
           res,
           statusCode: 400,
-          translationKey: "invalid_location_values", // Use translation key
-          values: { field }, // Replace placeholders with actual values
+          translationKey: "invalid_location_values",
+          values: { field },
         });
         return false;
       }
@@ -458,8 +402,8 @@ const validateParams = (req, res, options = {}) => {
       sendResponse({
         res,
         statusCode: 400,
-        translationKey: "missing_location_field", // Use translation key
-        values: { field }, // Replace placeholders with actual values
+        translationKey: "missing_location_field",
+        values: { field },
       });
       return false;
     }
@@ -468,9 +412,6 @@ const validateParams = (req, res, options = {}) => {
   return true;
 };
 
-/**
- * Check if a given ID is a valid nanoid (default 21 characters, a-zA-Z0-9, _ and -)
- */
 function isValidNanoid(id) {
   const nanoidRegex = /^[A-Za-z0-9_-]{21}$/;
   return nanoidRegex.test(id);
@@ -490,8 +431,6 @@ const extractNestedFields = (obj, fieldPath) => {
   return value;
 };
 
-
-// Example usage
 const exampleMiddleware = (req, res, next) => {
   const validationOptions = {
     queryParams: ["some_query_param"],
@@ -501,15 +440,11 @@ const exampleMiddleware = (req, res, next) => {
   };
 
   if (!validateParams(req, res, validationOptions)) {
-    return; // Invalid request data response already sent by validateParams
+    return;
   }
 
   next();
 };
-
-
-
-
 
 /**
  * Convert UTC date to a specific timezone and format it as AM/PM
@@ -522,28 +457,22 @@ const exampleMiddleware = (req, res, next) => {
 const convertUtcToTimezoneAMPM = (
   date,
   timezone,
-  outputFormat = "hh:mm A",  // Default output format is AM/PM
-  inputFormat = "YYYY-MM-DDTHH:mm:ss.SSSZ"  // Default input format (ISO 8601)
+  outputFormat = "hh:mm A",
+  inputFormat = "YYYY-MM-DDTHH:mm:ss.SSSZ"
 ) => {
-  // Check if the date is valid before proceeding
   if (!date || !moment(date, inputFormat, true).isValid()) {
     console.error("Invalid date format:", date);
-    return "Invalid Date"; // Return a fallback value
+    return "Invalid Date";
   }
 
-  const momentDate = moment(date, inputFormat, true); // Parse date with strict input format
+  const momentDate = moment(date, inputFormat, true);
 
   if (timezone) {
-    // Apply timezone conversion if timezone is provided
-    return momentDate.tz(timezone).format(outputFormat);  // Return in AM/PM format
+    return momentDate.tz(timezone).format(outputFormat);
   } else {
-    // Simply format the date without timezone conversion
-    return momentDate.format(outputFormat);  // Return in AM/PM format
+    return momentDate.format(outputFormat);
   }
 };
-
-
-
 
 /**
  * Converts a date from a specified input format to a specified user timezone.
@@ -560,13 +489,11 @@ const convertUtcToTimezone = (
   outputFormat = "YYYY-MM-DDTHH:mm:ss.SSSZ",
   inputFormat = "YYYY-MM-DDTHH:mm:ss.SSSZ"
 ) => {
-  const momentDate = moment(date, inputFormat, true); // Parse date with strict input format
+  const momentDate = moment(date, inputFormat, true);
 
   if (timezone) {
-    // Apply timezone conversion if timezone is provided
     return momentDate.tz(timezone).format(outputFormat);
   } else {
-    // Simply format the date without timezone conversion
     return momentDate.format(outputFormat);
   }
 };
@@ -588,16 +515,13 @@ const convertTimezoneToUtc = (
   outputFormat = "YYYY-MM-DDTHH:mm:ss.SSSZ"
 ) => {
   const momentDate = moment.tz(date, inputFormat, timezone).utc();
-  return momentDate.format(outputFormat); // return string
+  return momentDate.format(outputFormat);
 };
 const convertToUtcDateOnly = (date, timezone, inputFormat = "YYYY-MM-DD") => {
 
-
-  // Parse the date in the specified timezone but do not change the time zone
   const momentDate = moment.tz(date, inputFormat, timezone);
 
-  // Format the date in the given timezone without changing the time zone
-  return momentDate.format("YYYY-MM-DD[T]HH:mm:ss.SSS[+00:00]");  // Return the formatted date
+  return momentDate.format("YYYY-MM-DD[T]HH:mm:ss.SSS[+00:00]");
 };
 
 const convertTimezoneToUtcDateOnly = (
@@ -607,21 +531,17 @@ const convertTimezoneToUtcDateOnly = (
 ) => {
   const momentDate = moment.tz(date, inputFormat, timezone).utc();
 
-  // Manually set UTC time to midnight WITHOUT startOf()
   const year = momentDate.year();
-  const month = momentDate.month();   // 0-based
+  const month = momentDate.month();
   const day = momentDate.date();
 
   const utcMidnight = moment
-    .utc([year, month, day]) // creates YYYY-MM-DDT00:00:00.000Z
+    .utc([year, month, day])
     .format("YYYY-MM-DD[T]HH:mm:ss.SSS[+00:00]");
 
   return utcMidnight;
 };
 
-
-// Get the current date in user's timezone
-//Emphasizes the returned value is UTC-based, calculated using a timezone
 const getCurrentDateInTimezone = ({
   timezone,
   isDateOnly = false,
@@ -637,10 +557,8 @@ const getCurrentDateInTimezone = ({
     now = now.set({ hour: 0, minute: 0, second: 0, millisecond: 0 });
   }
 
-  // Return as a native JS Date object for MongoDB compatibility
   return now.toDate();
 };
-
 
 const getStartAndEndOfDay = (date, timezone) => {
   const start = moment(date)
@@ -660,7 +578,6 @@ const getStartAndEndOfDay = (date, timezone) => {
   return { start, end };
 };
 
-
 const getStartAndEndOfWeek = (date, timezone) => {
   const start = moment.tz(date, timezone).startOf("week").toDate();
   const end = moment.tz(date, timezone).endOf("week").toDate();
@@ -671,8 +588,6 @@ const getStartAndEndOfMonth = (date, timezone) => {
   const end = moment.tz(date, timezone).endOf("month").toDate();
   return { start, end };
 };
-
-
 
 /**
  * Converts a date from a specified input format to a specified output format.
@@ -687,15 +602,12 @@ const convertDateFormat = (
   outputFormat = "YYYY-MM-DDTHH:mm:ss.SSSZ",
   inputFormat = "YYYY-MM-DDTHH:mm:ss.SSSZ"
 ) => {
-  // Parse date with strict input format
   const momentDate = moment(date, inputFormat, true);
 
-  // Simply format the date without timezone conversion
   return momentDate.format(outputFormat);
 };
 
 const getReadableErrorMessage = (error) => {
-  // Set status code based on error type
   const statusCode =
     error.name === "ValidationError"
       ? 400
@@ -703,18 +615,12 @@ const getReadableErrorMessage = (error) => {
         ? 409
         : 500;
 
-  // Handle duplicate key error
   if (error.code === 11000 && error.message.includes("dup key")) {
-    // Try to extract all key-value pairs from the dup key object
     const match = error.message.match(/dup key: { (.+) }/);
     if (match && match[1]) {
-      // Split multiple fields if present (e.g., title: "Swimming", practiceCategory: ObjectId('...'))
       const fields = match[1].split(",").map((f) => f.trim());
-      // Build a readable message for all fields
       const fieldMessages = fields.map((field) => {
-        // Split field into key and value
         const [key, value] = field.split(":").map((s) => s.trim());
-        // Remove ObjectId(...) wrapper if present
         let cleanValue = value;
         if (/^ObjectId\(['"](.+)['"]\)$/.test(value)) {
           cleanValue = value.match(/^ObjectId\(['"](.+)['"]\)$/)[1];
@@ -732,25 +638,18 @@ const getReadableErrorMessage = (error) => {
     return { code: 11000, statusCode, message: "duplicate_value" };
   }
 
-  // Handle Mongoose validation error with full path extraction
   if (error.name === "ValidationError") {
-    // Collect all validation error messages with full path
     const messages = Object.values(error.errors || {}).map((e) => {
-      // If e.path exists, build full path from e.properties.path or e.path
       let fullPath = e.path || (e.properties && e.properties.path) || "";
-      // Try to extract full path from error.message if possible
-      // e.g., "Course validation failed: vocabullary.items.0.word: Path `word` is required."
       let match = error.message.match(
         new RegExp(`([\\w\\.]+):\\s*Path \`${e.path}\` is required`)
       );
       if (match && match[1]) {
         fullPath = match[1];
       }
-      // If fullPath is available, use it in the message
       if (fullPath) {
         return `Path \`${fullPath}\` is required.`;
       }
-      // Fallback to original message
       return e.message;
     });
     return {
@@ -760,7 +659,6 @@ const getReadableErrorMessage = (error) => {
     };
   }
 
-  // Default error
   return { code: error.code || null, statusCode, message: error.message };
 };
 const getCurrentUtcDateOnly = () => {
@@ -783,7 +681,7 @@ const getCurrentUtcDateOnly = () => {
     Date.UTC(
       now.getUTCFullYear(),
       now.getUTCMonth(),
-      now.getUTCDate(),  // set time to 00:00:00 UTC
+      now.getUTCDate(),
       0,
       0,
       0,
@@ -812,7 +710,6 @@ const fireAndForget = (promise, label) => {
     console.error(`[${label}] failed:`, err)
   );
 };
-
 
 module.exports = {
   sendResponse,

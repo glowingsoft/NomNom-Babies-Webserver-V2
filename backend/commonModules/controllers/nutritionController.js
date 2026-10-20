@@ -10,8 +10,6 @@ const {
 } = require("@utils/responseUtil");
 const { logActivity } = require("@utils/activityUtil");
 
-// ─── PUBLIC ───────────────────────────────────────────────────────────────────
-
 const getNutritionByRecipe = async (req, res) => {
   try {
     if (
@@ -139,8 +137,6 @@ const getNutrition = async (req, res) => {
   }
 };
 
-// ─── ADMIN ────────────────────────────────────────────────────────────────────
-
 const adminGetNutritions = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
 
@@ -251,7 +247,6 @@ const adminGetNutritions = async (req, res) => {
   }
 };
 
-// Create nutrient
 const createNutrition = async (req, res) => {
   try {
     if (
@@ -300,7 +295,6 @@ const createNutrition = async (req, res) => {
   }
 };
 
-// Update nutrient
 const updateNutrition = async (req, res) => {
   try {
     if (
@@ -367,7 +361,6 @@ const updateNutrition = async (req, res) => {
   }
 };
 
-// Delete nutrient (blocked if any Recipe still references it)
 const deleteNutrition = async (req, res) => {
   try {
     if (

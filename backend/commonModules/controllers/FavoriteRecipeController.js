@@ -9,7 +9,6 @@ const {
 } = require("@utils/responseUtil");
 const { logActivity } = require("@utils/activityUtil");
 
-// Add recipe to favorites
 const addFavorite = async (req, res) => {
   try {
     if (
@@ -105,7 +104,6 @@ const addFavorite = async (req, res) => {
   }
 };
 
-// Remove favorite
 const removeFavorite = async (req, res) => {
   try {
     if (
@@ -185,7 +183,6 @@ const removeFavorite = async (req, res) => {
   }
 };
 
-// Get user favorites
 const getFavorites = async (req, res) => {
   try {
     const userId = req.user._id;

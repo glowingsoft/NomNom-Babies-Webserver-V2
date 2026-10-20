@@ -10,7 +10,6 @@ const Baby = require("@models/Baby");
 const { Devices } = require("@models/Devices");
 const Meals = require("@models/Meals");
 
-// ── Widgets (stat cards) — downloads restored via Activity ──────────────
 const dashboard = async (req, res) => {
   try {
     const [
@@ -78,7 +77,6 @@ const dashboard = async (req, res) => {
   }
 };
 
-// ── User status donut (Active / Inactive / Suspended) ──────────────────
 const userStatusStats = async (req, res) => {
   try {
     const [active, inactive, suspended] = await Promise.all([
@@ -117,7 +115,6 @@ const userStatusStats = async (req, res) => {
   }
 };
 
-// ── Platform health radial (unchanged) ──────────────────────────────────
 const platformHealth = async (req, res) => {
   try {
     const [
@@ -159,7 +156,6 @@ const platformHealth = async (req, res) => {
   }
 };
 
-// ── Platform growth bar chart — downloads series restored ────────────────
 const platformGrowthTrend = async (req, res) => {
   try {
     const months = [];
@@ -218,8 +214,6 @@ const platformGrowthTrend = async (req, res) => {
   }
 };
 
-
-// ── Recent activities (limit param) ──────────────────────────────────────
 const recentActivities = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit, 10) || 5;
@@ -333,7 +327,6 @@ const downloadsByType = async (req, res) => {
   }
 };
 
-// ── Top viewed recipes (unchanged) ───────────────────────────────────────
 const topViewedRecipes = async (req, res) => {
   try {
     const recipes = await Recipe.find({ status: "published" })
@@ -349,7 +342,6 @@ const topViewedRecipes = async (req, res) => {
   }
 };
 
-// ── Most selected countries (unchanged) ──────────────────────────────────
 const topCountries = async (req, res) => {
   try {
     const countries = await Baby.aggregate([
@@ -401,12 +393,10 @@ const topCountries = async (req, res) => {
   }
 };
 
-// New — country growth over time
 const getCountryGrowth = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit || req.params.limit || 5, 10);
 
-    // top N countries by baby count, to keep the line chart readable
     const topN = await Baby.aggregate([
       { $match: { "selectedCountries.0": { $exists: true } } },
       { $unwind: "$selectedCountries" },
@@ -483,7 +473,6 @@ const getCountryGrowth = async (req, res) => {
   }
 };
 
-// ── App downloads (unique installs by platform: Android / iOS) ─────────
 const appDownloadStats = async (req, res) => {
   try {
     const results = await Devices.aggregate([

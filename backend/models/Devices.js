@@ -21,7 +21,7 @@ const DevicesSchema = mongoose.Schema(
       ref: "User",
       required: true,
     },
-    devices: [DeviceSchema], // Array of device objects
+    devices: [DeviceSchema],
   },
   {
     timestamps: true,
@@ -30,7 +30,6 @@ const DevicesSchema = mongoose.Schema(
 
 const Devices = mongoose.model("device", DevicesSchema);
 
-// Function to add a device after checking for duplicate deviceId
 async function createOrSkipDevice(userId, deviceId, deviceType) {
   try {
     if (!deviceId || deviceId === "test") {

@@ -15,40 +15,36 @@ const {
 
 const router = express.Router();
 
-// Define rate limiters
-const createStageRateLimiter = createRateLimiter("createBabyStage", 15, 15); // 15 requests per 15 minutes
-const updateStageRateLimiter = createRateLimiter("updateBabyStage", 15, 15); // 15 requests per 15 minutes
-const deleteStageRateLimiter = createRateLimiter("deleteBabyStage", 15, 15); // 15 requests per 15 minutes
+const createStageRateLimiter = createRateLimiter("createBabyStage", 15, 15);
+const updateStageRateLimiter = createRateLimiter("updateBabyStage", 15, 15);
+const deleteStageRateLimiter = createRateLimiter("deleteBabyStage", 15, 15);
 
-// PUBLIC (any logged-in user)
 router.get("/", auth, getBabyStages);
 router.get("/:id", auth, getBabyStageById);
 router.post("/select", auth, selectBabyStage);
 
-//  CONTENT ADMIN + SUPER ADMIN
 router.get(
   "/admin/all",
   auth,
-  /**authorizeRoles("contentAdmin", "superAdmin"),**/ adminGetBabyStages,
+ adminGetBabyStages,
 );
 router.post(
   "/",
   auth,
-  /**authorizeRoles("contentAdmin", "superAdmin"),**/ createStageRateLimiter,
+ createStageRateLimiter,
   createBabyStage,
 );
 router.put(
   "/:id",
   auth,
-  /**authorizeRoles("contentAdmin", "superAdmin"),**/ updateStageRateLimiter,
+ updateStageRateLimiter,
   updateBabyStage,
 );
 
-// SUPER ADMIN ONLY
 router.delete(
   "/:id",
   auth,
-  /**authorizeRoles("superAdmin"),**/ deleteStageRateLimiter,
+ deleteStageRateLimiter,
   deleteBabyStage,
 );
 

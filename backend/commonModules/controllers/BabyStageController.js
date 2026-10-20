@@ -10,9 +10,6 @@ const {
 const Recipe = require("@models/Recipe");
 const { logActivity } = require("@utils/activityUtil");
 
-// ─── PUBLIC ───────────────────────────────────────────────────────────────────
-
-// Get all active baby stages (for the selection screen)
 const getBabyStages = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
 
@@ -46,7 +43,6 @@ const getBabyStages = async (req, res) => {
   }
 };
 
-// Get a single baby stage by ID
 const getBabyStageById = async (req, res) => {
   try {
     const validationOptions = {
@@ -82,7 +78,6 @@ const getBabyStageById = async (req, res) => {
   }
 };
 
-// Select a baby stage (logged-in user)
 const selectBabyStage = async (req, res) => {
   try {
     const validationOptions = {
@@ -151,9 +146,6 @@ const selectBabyStage = async (req, res) => {
   }
 };
 
-// ─── ADMIN ────────────────────────────────────────────────────────────────────
-
-// Get all baby stages with pagination (admin)
 const adminGetBabyStages = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
 
@@ -247,7 +239,6 @@ const adminGetBabyStages = async (req, res) => {
   }
 };
 
-// Create a new baby stage
 const createBabyStage = async (req, res) => {
   const { title, features = [] } = req.body;
 
@@ -304,7 +295,6 @@ const createBabyStage = async (req, res) => {
   }
 };
 
-// Update an existing baby stage
 const updateBabyStage = async (req, res) => {
   const { title, features, active } = req.body;
 
@@ -368,7 +358,6 @@ const updateBabyStage = async (req, res) => {
   }
 };
 
-// Delete a baby stage
 const deleteBabyStage = async (req, res) => {
   try {
     const validationOptions = {

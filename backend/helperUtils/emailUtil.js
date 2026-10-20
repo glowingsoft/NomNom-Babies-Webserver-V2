@@ -7,7 +7,6 @@ const {
 
 var SibApiV3Sdk = require("sib-api-v3-sdk");
 
-// Define the default app name
 const DEFAULT_APP_NAME = "NomNom Babies";
 
 const sesClient = new SESClient({
@@ -17,15 +16,6 @@ const sesClient = new SESClient({
     secretAccessKey: process.env.AWS_EMAIL_SECRET_KEY,
   },
 });
-
-//todo template for otp email
-// const otpEmailTemplate = (otp) => {
-//   return `<div>
-//     <h1>Welcome to biolderPlate";</h1>
-//     <p>Your OTP code is <strong>${otp}</strong></p>
-//     <p>Use this code to complete your registration</p>
-//   </div>`;
-// };
 
 /**
  * Send an email using AWS SES
@@ -72,7 +62,6 @@ const sendEmailViaAwsSes = async (emails, subject, body, config = {}) => {
   }
 };
 
-// Initialize the Pinpoint client
 const pinpointClient = new PinpointClient({
   region: process.env.AWS_EMAIL_REGION,
   credentials: {
@@ -100,8 +89,8 @@ const sendSmsViaPinpoint = async (phoneNumber, message) => {
         MessageConfiguration: {
           SMSMessage: {
             Body: message,
-            MessageType: "TRANSACTIONAL", // Use "PROMOTIONAL" for marketing messages
-            SenderId: process.env.AWS_PINPOINT_SENDER_ID, // Optional: Use if you have a sender ID
+            MessageType: "TRANSACTIONAL",
+            SenderId: process.env.AWS_PINPOINT_SENDER_ID,
           },
         },
       },
@@ -116,8 +105,6 @@ const sendSmsViaPinpoint = async (phoneNumber, message) => {
     throw error;
   }
 };
-
-// The API key is set per send (not at require time): .env may be loaded after this module.
 
 /**
  * Send an email using SendGrid
@@ -135,7 +122,6 @@ const sendEmailViaSgrid = async (title, emails, subject, body, config = {}) => {
   try {
     sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-    // Set the default title if none is provided
     const emailTitle = title || DEFAULT_APP_NAME;
 
     const {
@@ -164,32 +150,25 @@ const sendEmailViaSgrid = async (title, emails, subject, body, config = {}) => {
   }
 };
 
-
 const sendEmailViaBrevo = async (emails, subject, body, config = {}) => {
   var defaultClient = SibApiV3Sdk.ApiClient.instance;
-  // Get the API key
   var apiKey = defaultClient.authentications["api-key"];
-  apiKey.apiKey = process.env.BREVO_EMAIL_API_KEY; // Use the environment variable for the API key
+  apiKey.apiKey = process.env.BREVO_EMAIL_API_KEY;
 
   const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
   const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-  // Initial assignment from parameters
   sendSmtpEmail.subject = subject;
   sendSmtpEmail.htmlContent = body;
   sendSmtpEmail.sender = { email: "support@boilerplateapp.com", name: "boilerplate Support" };
 
-  // Ensure to field is dynamically updated
   sendSmtpEmail.to = emails.map(email => ({ email }));
   try {
-    // Send email
    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
     console.log("Email paused in dev environment", data);
   } catch (error) {
     console.error("Error sending email:", error);
-    // throw new Error (error.response.body)
   }
 };
-
 
 /**
  * Email an OTP to a user via SendGrid. Never throws: a mail failure is logged

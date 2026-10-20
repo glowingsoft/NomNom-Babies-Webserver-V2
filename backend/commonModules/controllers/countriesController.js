@@ -69,14 +69,12 @@ const getCountryById = async (req, res) => {
   }
 };
 
-// Select up to 2 countries (logged-in user)
 const selectCountries = async (req, res) => {
   try {
     if (!validateParams(req, res, { rawData: ["countryIds"] })) return;
 
     const { countryIds } = req.body;
 
-    // Must be an array
     if (!Array.isArray(countryIds)) {
       return sendResponse({
         res,
@@ -85,7 +83,6 @@ const selectCountries = async (req, res) => {
       });
     }
 
-    // Max 2 countries
     if (countryIds.length > 2) {
       return sendResponse({
         res,
@@ -94,7 +91,6 @@ const selectCountries = async (req, res) => {
       });
     }
 
-    // Validate all IDs are valid ObjectIds
     const mongoose = require("mongoose");
     const allValid = countryIds.every((id) =>
       mongoose.Types.ObjectId.isValid(id),
@@ -107,7 +103,6 @@ const selectCountries = async (req, res) => {
       });
     }
 
-    // Ensure all countries exist and are enabled
     const countries = await Country.find({
       _id: { $in: countryIds },
       isEnabled: true,
@@ -121,7 +116,6 @@ const selectCountries = async (req, res) => {
       });
     }
 
-    // Save to user
     const user = await User.findByIdAndUpdate(
       req.user._id,
       {

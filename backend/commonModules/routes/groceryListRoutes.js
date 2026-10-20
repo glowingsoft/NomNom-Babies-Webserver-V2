@@ -29,7 +29,6 @@ const clearListRateLimiter = createRateLimiter("clearGroceryList", 15, 15);
 
 router.get("/", auth, getGroceryList);
 
-// ADMIN
 router.get(
   "/admin/all",
   auth,
@@ -48,13 +47,10 @@ router.post("/add-recipe", auth, addRecipeRateLimiter, addRecipeToGroceryList);
 
 router.patch("/items", auth, updateItemRateLimiter, updateGroceryItems);
 
-// Remove Item
 router.delete("/item/:itemId", auth, removeItemRateLimiter, removeGroceryItem);
 
-// Remove Recipe from GroceryList
 router.delete("/:recipeId", auth, removeRecipeFromGroceryList);
 
-// CLear whole List
 router.delete("/clear", auth, clearListRateLimiter, clearGroceryList);
 
 module.exports = router;

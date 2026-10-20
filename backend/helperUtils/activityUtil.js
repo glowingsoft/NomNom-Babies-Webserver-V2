@@ -27,5 +27,4 @@ const logActivity = async ({
 };
 
 module.exports = { logActivity };
-
-// Replicate this helper in given Controller:
+

@@ -1,6 +1,5 @@
 const { parsePaginationParams } = require("../helperUtils/responseUtil");
 
-// Single Table Population
 /**
  * Populates specified fields for a Mongoose model query with pagination and sorting.
  * @param {object} model - Mongoose model to query.
@@ -43,7 +42,6 @@ const populateFields = async (model, query, fieldsToPopulate, options = {}) => {
   return documents;
 };
 
-// Multiple Tables Population
 /**
  * Populates specified fields for multiple Mongoose models with pagination and sorting.
  * @param {Array<{model: object, query: object, fieldsToPopulate: Array<{path: string, select: string}>, options?: object}>} populationConfigs - Array of population configurations.
@@ -84,7 +82,6 @@ const populateMultipleTables = async (populationConfigs) => {
   return Promise.all(promises);
 };
 
-// Nested Population
 /**
  * Populates nested fields for a Mongoose model query with pagination and sorting.
  * @param {object} model - Mongoose model to query.

@@ -14,15 +14,6 @@ function emitOrderEvent({
     timestamp: Date.now(),
   };
 
-  // console.log(
-  //   `📡 Emitting ${eventName} → order ${orderId}` +
-  //   (organizationId ? ` | org ${organizationId}` : " | NO ORG")
-  // );
-  // console.log("Payload:", payload);
-
-  /* ======================================================
-     👥 ORG-SCOPED EMITS (ONLY IF orgId EXISTS)
-     ====================================================== */
   if (organizationId) {
     io.of("/staff/orders")
       .to(`org:${organizationId}`)
@@ -37,9 +28,6 @@ function emitOrderEvent({
       .emit(eventName, payload);
   }
 
-  /* ======================================================
-     👤 USER-SCOPED EMIT (INDEPENDENT OF ORG)
-     ====================================================== */
   if (userId) {
     io.of("/user/orders")
       .to(`user:${String(userId)}`)

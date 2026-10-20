@@ -32,9 +32,6 @@ const validateNutritionTagIds = async (nutritionTags = []) => {
   return { valid: true };
 };
 
-// ─── PUBLIC ───────────────────────────────────────────────────────────────────
-
-// Get recipes filtered by baby's countries and stage (main recipe list screen)
 const getRecipes = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
 
@@ -144,7 +141,6 @@ const getRecipes = async (req, res) => {
   }
 };
 
-// Get single recipe detail
 const getRecipeById = async (req, res) => {
   try {
     if (
@@ -519,9 +515,6 @@ const getCustomCulturalPicks = async (req, res) => {
   }
 };
 
-// ─── ADMIN ────────────────────────────────────────────────────────────────────
-
-// Get all recipes with pagination + filters (admin)
 const adminGetRecipes = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
 
@@ -612,7 +605,6 @@ const adminGetRecipeById = async (req, res) => {
   }
 };
 
-// Create a recipe
 const createRecipe = async (req, res) => {
   try {
     if (
@@ -713,7 +705,6 @@ const createRecipe = async (req, res) => {
   }
 };
 
-// Update a recipe
 const updateRecipe = async (req, res) => {
   try {
     if (
@@ -831,11 +822,6 @@ const updateRecipe = async (req, res) => {
       },
     });
 
-    // const updatedRecipe = await Recipe.findById(recipe._id)
-    //   .populate("country", "_id name")
-    //   .populate("babyStage", "_id title")
-    //   .populate("nutritionTags", "_id name benefit");
-
     return sendResponse({
       res,
       statusCode: 200,
@@ -852,7 +838,6 @@ const updateRecipe = async (req, res) => {
   }
 };
 
-// Delete a recipe
 const deleteRecipe = async (req, res) => {
   try {
     if (

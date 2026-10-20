@@ -1,21 +1,18 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-// Function to test the 'About Us' API endpoint
 export function testAboutUs() {
-    const res = http.get('http://127.0.0.1:4001/api/settings/aboutUs'); // Replace with your API endpoint
+    const res = http.get('http://127.0.0.1:4001/api/settings/aboutUs');
     check(res, {
         'status was 200': (r) => r.status === 200,
-        'response time was acceptable': (r) => r.timings.duration < 200, // Example of additional check
+        'response time was acceptable': (r) => r.timings.duration < 200,
     });
     sleep(1);
 }
 
-
-// Function to test the 'Send Message' API endpoint
 export function testSendMessage() {
-    const conversationId = '66fb9fddc3853b1ebe5c112c'; // Replace with your actual conversation ID
-    const url = `http://127.0.0.1:4001/api/conversation/${conversationId}/message`; // Replace with your API endpoint
+    const conversationId = '66fb9fddc3853b1ebe5c112c';
+    const url = `http://127.0.0.1:4001/api/conversation/${conversationId}/message`;
   
     const messages = [
         "Hello, how are you?",
@@ -56,25 +53,15 @@ export function testSendMessage() {
     sleep(1);
 }
 
-// Main function to run specific tests
 export default function () {
-    //testAboutUs();
     testSendMessage();
 }
 
-// Configuration for k6 load test
-// export const options = {
-//     vus: 1000,           // Number of virtual users
-//     duration: '20s',    // Duration for the test
-//     http_req_timeout: '10s', // Increase timeout to 10 seconds
-
-// };
-
 export const options = {
     stages: [
-        { duration: '10s', target: 250 }, // Ramp up to 250 VUs
-        { duration: '10s', target: 1000 }, // Ramp up to 1000 VUs
-        { duration: '5s', target: 0 },     // Ramp down
+        { duration: '10s', target: 250 },
+        { duration: '10s', target: 1000 },
+        { duration: '5s', target: 0 },
     ],
     http_req_timeout: '10s',
 };

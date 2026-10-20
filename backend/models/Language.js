@@ -4,7 +4,7 @@ const languageSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: [true, "language_title_required"], // Custom error message key
+      required: [true, "language_title_required"],
     },
     image: {
       type: String,
@@ -22,7 +22,7 @@ const languageSchema = new mongoose.Schema(
     },
     code: {
       type: String,
-      required: [true, "language_code_required"], // Custom error message key
+      required: [true, "language_code_required"],
       unique: true,
     },
     active: {

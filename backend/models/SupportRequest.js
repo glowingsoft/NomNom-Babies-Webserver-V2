@@ -1,4 +1,3 @@
-// models/SupportRequest.js
 const mongoose = require('mongoose');
 const validator = require('validator');
 
@@ -10,7 +9,7 @@ const supportRequestSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: [true, 'email_required'], // Generic error message key
+    required: [true, 'email_required'],
     trim: true,
     validate: {
       validator: function (value) {
