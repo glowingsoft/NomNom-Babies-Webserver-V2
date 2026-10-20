@@ -11,208 +11,148 @@ const { Devices } = require("@models/Devices");
 const Meals = require("@models/Meals");
 const { lookupOne } = require("@utils/aggregationUtil");
 
-const dashboard = async (req, res) => {
-  try {
-    const [
-      totalUsers,
-      activeUsers,
-      inactiveUsers,
-      totalCountries,
-      activeCountries,
-      totalRecipes,
-      publishedRecipes,
-      totalAgeGroups,
-      activeAgeGroups,
-      totalNutritionTags,
-      openSupportTickets,
-      totalDownloads,
-    ] = await Promise.all([
-      User.countDocuments({ "accountState.userType": { $ne: "admin" } }),
-      User.countDocuments({
-        "accountState.status": "active",
-        "accountState.userType": { $ne: "admin" },
-      }),
-      User.countDocuments({
-        "accountState.status": "inactive",
-        "accountState.userType": { $ne: "admin" },
-      }),
-      Country.countDocuments(),
-      Country.countDocuments({ status: "active", isEnabled: true }),
-      Recipe.countDocuments(),
-      Recipe.countDocuments({ status: "published" }),
-      BabyStage.countDocuments(),
-      BabyStage.countDocuments({ active: true }),
-      Nutrition.countDocuments(),
-      SupportRequest.countDocuments({ status: { $in: ["pending", "open"] } }),
-      Activity.countDocuments({ action: "download" }),
-    ]);
+const getDashboardCounts = async () => {
+  const [
+    totalUsers,
+    activeUsers,
+    inactiveUsers,
+    suspendedUsers,
+    totalCountries,
+    activeCountries,
+    totalRecipes,
+    publishedRecipes,
+    totalAgeGroups,
+    activeAgeGroups,
+    totalNutritionTags,
+    openSupportTickets,
+    totalDownloads,
+  ] = await Promise.all([
+    User.countDocuments({ "accountState.userType": { $ne: "admin" } }),
+    User.countDocuments({
+      "accountState.status": "active",
+      "accountState.userType": { $ne: "admin" },
+    }),
+    User.countDocuments({
+      "accountState.status": "inactive",
+      "accountState.userType": { $ne: "admin" },
+    }),
+    User.countDocuments({
+      "accountState.status": "suspended",
+      "accountState.userType": { $ne: "admin" },
+    }),
+    Country.countDocuments(),
+    Country.countDocuments({ status: "active", isEnabled: true }),
+    Recipe.countDocuments(),
+    Recipe.countDocuments({ status: "published" }),
+    BabyStage.countDocuments(),
+    BabyStage.countDocuments({ active: true }),
+    Nutrition.countDocuments(),
+    SupportRequest.countDocuments({ status: { $in: ["pending", "open"] } }),
+    Activity.countDocuments({ action: "download" }),
+  ]);
 
-    return sendResponse({
-      res,
-      statusCode: 200,
-      translationKey: "data_fetched_successfully",
-      data: {
-        widgets: {
-          totalUsers,
-          activeUsers,
-          inactiveUsers,
-          totalCountries,
-          activeCountries,
-          totalRecipes,
-          publishedRecipes,
-          totalAgeGroups,
-          activeAgeGroups,
-          totalNutritionTags,
-          openSupportTickets,
-          downloadedResources: totalDownloads,
-        },
-      },
-    });
-  } catch (error) {
-    return sendResponse({
-      res,
-      statusCode: 500,
-      translationKey: "internal_server_error",
-      error: error.message,
-    });
-  }
+  return {
+    totalUsers,
+    activeUsers,
+    inactiveUsers,
+    suspendedUsers,
+    totalCountries,
+    activeCountries,
+    totalRecipes,
+    publishedRecipes,
+    totalAgeGroups,
+    activeAgeGroups,
+    totalNutritionTags,
+    openSupportTickets,
+    totalDownloads,
+  };
 };
 
-const userStatusStats = async (req, res) => {
-  try {
-    const [active, inactive, suspended] = await Promise.all([
-      User.countDocuments({
-        "accountState.status": "active",
-        "accountState.userType": { $ne: "admin" },
-      }),
-      User.countDocuments({
-        "accountState.status": "inactive",
-        "accountState.userType": { $ne: "admin" },
-      }),
-      User.countDocuments({
-        "accountState.status": "suspended",
-        "accountState.userType": { $ne: "admin" },
-      }),
-    ]);
+const buildWidgets = (c) => ({
+  totalUsers: c.totalUsers,
+  activeUsers: c.activeUsers,
+  inactiveUsers: c.inactiveUsers,
+  totalCountries: c.totalCountries,
+  activeCountries: c.activeCountries,
+  totalRecipes: c.totalRecipes,
+  publishedRecipes: c.publishedRecipes,
+  totalAgeGroups: c.totalAgeGroups,
+  activeAgeGroups: c.activeAgeGroups,
+  totalNutritionTags: c.totalNutritionTags,
+  openSupportTickets: c.openSupportTickets,
+  downloadedResources: c.totalDownloads,
+});
 
-    return sendResponse({
-      res,
-      statusCode: 200,
-      translationKey: "data_fetched_successfully",
-      data: {
-        active,
-        inactive,
-        suspended,
-        total: active + inactive + suspended,
-      },
-    });
-  } catch (error) {
-    return sendResponse({
-      res,
-      statusCode: 500,
-      translationKey: "internal_server",
-      error: error.message,
-    });
-  }
-};
+const buildUserStatus = (c) => ({
+  active: c.activeUsers,
+  inactive: c.inactiveUsers,
+  suspended: c.suspendedUsers,
+  total: c.activeUsers + c.inactiveUsers + c.suspendedUsers,
+});
 
-const platformHealth = async (req, res) => {
-  try {
-    const [
-      totalCountries,
-      activeCountries,
-      totalAgeGroups,
-      activeAgeGroups,
-      totalRecipes,
-      publishedRecipes,
-    ] = await Promise.all([
-      Country.countDocuments(),
-      Country.countDocuments({ status: "active", isEnabled: true }),
-      BabyStage.countDocuments(),
-      BabyStage.countDocuments({ active: true }),
-      Recipe.countDocuments(),
-      Recipe.countDocuments({ status: "published" }),
-    ]);
+const buildPlatformHealth = (c) => ({
+  countriesRate:
+    c.totalCountries > 0
+      ? Math.round((c.activeCountries / c.totalCountries) * 100)
+      : 0,
+  ageGroupsRate:
+    c.totalAgeGroups > 0
+      ? Math.round((c.activeAgeGroups / c.totalAgeGroups) * 100)
+      : 0,
+  recipesRate:
+    c.totalRecipes > 0
+      ? Math.round((c.publishedRecipes / c.totalRecipes) * 100)
+      : 0,
+});
 
-    return sendResponse({
-      res,
-      statusCode: 200,
-      data: {
-        countriesRate:
-          totalCountries > 0
-            ? Math.round((activeCountries / totalCountries) * 100)
-            : 0,
-        ageGroupsRate:
-          totalAgeGroups > 0
-            ? Math.round((activeAgeGroups / totalAgeGroups) * 100)
-            : 0,
-        recipesRate:
-          totalRecipes > 0
-            ? Math.round((publishedRecipes / totalRecipes) * 100)
-            : 0,
-      },
-    });
-  } catch (error) {
-    return sendResponse({ res, statusCode: 500, error: error.message });
-  }
-};
+const getGrowthTrend = async () => {
+  const months = [];
+  const now = new Date();
 
-const platformGrowthTrend = async (req, res) => {
-  try {
-    const months = [];
-    const now = new Date();
-
-    for (let i = 5; i >= 0; i -= 1) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      months.push({
-        label: d.toLocaleString("en-US", { month: "short" }),
-        start: new Date(d.getFullYear(), d.getMonth(), 1),
-        end: new Date(d.getFullYear(), d.getMonth() + 1, 1),
-      });
-    }
-
-    const rangeStart = months[0].start;
-
-    const [userDocs, recipeDocs, downloadDocs] = await Promise.all([
-      User.find({
-        createdAt: { $gte: rangeStart },
-        "accountState.userType": { $ne: "admin" },
-      }).select("createdAt"),
-      Recipe.find({ createdAt: { $gte: rangeStart } }).select("createdAt"),
-      Activity.find({
-        action: "download",
-        createdAt: { $gte: rangeStart },
-      }).select("createdAt"),
-    ]);
-
-    const bucket = (docs) =>
-      months.map(
-        (m) =>
-          docs.filter((d) => d.createdAt >= m.start && d.createdAt < m.end)
-            .length,
-      );
-
-    return sendResponse({
-      res,
-      statusCode: 200,
-      translationKey: "data_fetched_successfully",
-      data: {
-        months: months.map((m) => m.label),
-        series: [
-          { name: "Users", data: bucket(userDocs) },
-          { name: "Recipes", data: bucket(recipeDocs) },
-          { name: "Downloads", data: bucket(downloadDocs) },
-        ],
-      },
-    });
-  } catch (error) {
-    return sendResponse({
-      res,
-      statusCode: 500,
-      translationKey: "internal_server",
-      error: error.message,
+  for (let i = 5; i >= 0; i -= 1) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      label: d.toLocaleString("en-US", { month: "short" }),
+      start: new Date(d.getFullYear(), d.getMonth(), 1),
+      end: new Date(d.getFullYear(), d.getMonth() + 1, 1),
     });
   }
+
+  const rangeStart = months[0].start;
+
+  const [userDocs, recipeDocs, downloadDocs] = await Promise.all([
+    User.find({
+      createdAt: { $gte: rangeStart },
+      "accountState.userType": { $ne: "admin" },
+    })
+      .select("createdAt")
+      .lean(),
+    Recipe.find({ createdAt: { $gte: rangeStart } })
+      .select("createdAt")
+      .lean(),
+    Activity.find({
+      action: "download",
+      createdAt: { $gte: rangeStart },
+    })
+      .select("createdAt")
+      .lean(),
+  ]);
+
+  const bucket = (docs) =>
+    months.map(
+      (m) =>
+        docs.filter((d) => d.createdAt >= m.start && d.createdAt < m.end)
+          .length,
+    );
+
+  return {
+    months: months.map((m) => m.label),
+    series: [
+      { name: "Users", data: bucket(userDocs) },
+      { name: "Recipes", data: bucket(recipeDocs) },
+      { name: "Downloads", data: bucket(downloadDocs) },
+    ],
+  };
 };
 
 const minimizeEmptyObjects = (value) => {
@@ -225,377 +165,407 @@ const minimizeEmptyObjects = (value) => {
   return Object.keys(value).length ? value : undefined;
 };
 
-const recentActivities = async (req, res) => {
-  try {
-    const limit = parseInt(req.query.limit, 10) || 5;
-
-    const activities = await Activity.aggregate([
-      { $sort: { createdAt: -1 } },
-      { $limit: Math.abs(limit) },
-      ...lookupOne({
-        from: User.collection.name,
-        field: "user",
-        fields: ["_id", { name: "name", default: "" }, "email"],
-      }),
-      {
-        $addFields: {
-          baby: { $ifNull: ["$baby", null] },
-          targetId: { $ifNull: ["$targetId", null] },
-        },
+const getRecentActivities = async (limit) => {
+  const activities = await Activity.aggregate([
+    { $sort: { createdAt: -1 } },
+    { $limit: Math.abs(limit) },
+    ...lookupOne({
+      from: User.collection.name,
+      field: "user",
+      fields: ["_id", { name: "name", default: "" }, "email"],
+    }),
+    {
+      $addFields: {
+        baby: { $ifNull: ["$baby", null] },
+        targetId: { $ifNull: ["$targetId", null] },
       },
-    ]);
+    },
+  ]);
 
-    activities.forEach((activity) => {
-      if (activity.metadata === undefined) return;
-      const minimized = minimizeEmptyObjects(activity.metadata);
-      if (minimized === undefined) delete activity.metadata;
-      else activity.metadata = minimized;
-    });
+  activities.forEach((activity) => {
+    if (activity.metadata === undefined) return;
+    const minimized = minimizeEmptyObjects(activity.metadata);
+    if (minimized === undefined) delete activity.metadata;
+    else activity.metadata = minimized;
+  });
 
-    return sendResponse({
-      res,
-      statusCode: 200,
-      translationKey: "data_fetched_successfully",
-      data: activities,
-    });
-  } catch (error) {
-    return sendResponse({
-      res,
-      statusCode: 500,
-      translationKey: "internal_server",
-      error: error.message,
-    });
-  }
+  return activities;
 };
 
-const topDownloadedRecipes = async (req, res) => {
-  try {
-    const results = await Activity.aggregate([
-      {
-        $match: {
-          action: "download",
-          module: "recipe",
-          targetId: { $ne: null },
-        },
+const getTopDownloadedRecipes = () =>
+  Activity.aggregate([
+    {
+      $match: {
+        action: "download",
+        module: "recipe",
+        targetId: { $ne: null },
       },
-      {
-        $group: {
-          _id: "$targetId",
-          title: { $first: "$metadata.recipeTitle" },
-          downloads: { $sum: 1 },
-        },
+    },
+    {
+      $group: {
+        _id: "$targetId",
+        title: { $first: "$metadata.recipeTitle" },
+        downloads: { $sum: 1 },
       },
-      { $sort: { downloads: -1 } },
-      { $limit: 10 },
-      {
-        $lookup: {
-          from: Recipe.collection.name,
-          localField: "_id",
-          foreignField: "_id",
-          pipeline: [{ $project: { title: 1, mealType: 1 } }],
-          as: "recipe",
-        },
+    },
+    { $sort: { downloads: -1 } },
+    { $limit: 10 },
+    {
+      $lookup: {
+        from: Recipe.collection.name,
+        localField: "_id",
+        foreignField: "_id",
+        pipeline: [{ $project: { title: 1, mealType: 1 } }],
+        as: "recipe",
       },
-      { $unwind: { path: "$recipe", preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: Meals.collection.name,
-          localField: "recipe.mealType",
-          foreignField: "_id",
-          as: "mealType",
-        },
+    },
+    { $unwind: { path: "$recipe", preserveNullAndEmptyArrays: true } },
+    {
+      $lookup: {
+        from: Meals.collection.name,
+        localField: "recipe.mealType",
+        foreignField: "_id",
+        as: "mealType",
       },
-      {
-        $unwind: {
-          path: "$mealType",
-          preserveNullAndEmptyArrays: true,
-        },
+    },
+    {
+      $unwind: {
+        path: "$mealType",
+        preserveNullAndEmptyArrays: true,
       },
-      {
-        $project: {
-          _id: 0,
-          recipeId: "$_id",
-          title: { $ifNull: ["$title", "$recipe.title"] },
-          mealType: {
-            _id: "$mealType._id",
-            name: "$mealType.name",
-          },
-          downloads: 1,
+    },
+    {
+      $project: {
+        _id: 0,
+        recipeId: "$_id",
+        title: { $ifNull: ["$title", "$recipe.title"] },
+        mealType: {
+          _id: "$mealType._id",
+          name: "$mealType.name",
         },
+        downloads: 1,
       },
-    ]);
+    },
+  ]);
 
-    return sendResponse({
-      res,
-      statusCode: 200,
-      translationKey: "data_fetched_successfully",
-      data: results,
-    });
-  } catch (error) {
-    return sendResponse({
-      res,
-      statusCode: 500,
-      translationKey: "internal_server",
-      error: error.message,
-    });
-  }
+const getDownloadsByType = () =>
+  Activity.aggregate([
+    { $match: { action: "download" } },
+    { $group: { _id: "$module", downloads: { $sum: 1 } } },
+    { $sort: { downloads: -1, _id: 1 } },
+    { $project: { _id: 0, module: "$_id", downloads: 1 } },
+  ]);
+
+const getTopViewedRecipes = () => {
+  const refField = (field) => ({
+    $cond: [
+      { $ifNull: [`$${field}._id`, false] },
+      { _id: `$${field}._id`, name: `$${field}.name` },
+      null,
+    ],
+  });
+
+  return Recipe.aggregate([
+    { $match: { status: "published" } },
+    { $addFields: { views: { $ifNull: ["$views", 0] } } },
+    { $sort: { views: -1, createdAt: -1 } },
+    { $limit: 10 },
+    {
+      $lookup: {
+        from: Country.collection.name,
+        localField: "country",
+        foreignField: "_id",
+        as: "country",
+      },
+    },
+    { $unwind: { path: "$country", preserveNullAndEmptyArrays: true } },
+    {
+      $lookup: {
+        from: Meals.collection.name,
+        localField: "mealType",
+        foreignField: "_id",
+        as: "mealType",
+      },
+    },
+    { $unwind: { path: "$mealType", preserveNullAndEmptyArrays: true } },
+    {
+      $project: {
+        _id: 1,
+        title: 1,
+        views: 1,
+        country: refField("country"),
+        mealType: refField("mealType"),
+      },
+    },
+  ]);
 };
 
-const downloadsByType = async (req, res) => {
-  try {
-    const results = await Activity.aggregate([
-      { $match: { action: "download" } },
-      { $group: { _id: "$module", downloads: { $sum: 1 } } },
-      { $project: { _id: 0, module: "$_id", downloads: 1 } },
-    ]);
-
-    return sendResponse({
-      res,
-      statusCode: 200,
-      translationKey: "data_fetched_successfully",
-      data: results,
-    });
-  } catch (error) {
-    return sendResponse({
-      res,
-      statusCode: 500,
-      translationKey: "internal_server",
-      error: error.message,
-    });
-  }
+const getTopCountries = async () => {
+  const countries = await Baby.aggregate([
+    { $match: { "selectedCountries.0": { $exists: true } } },
+    { $unwind: "$selectedCountries" },
+    { $group: { _id: "$selectedCountries", users: { $sum: 1 } } },
+    { $sort: { users: -1, _id: 1 } },
+    { $limit: 10 },
+    {
+      $lookup: {
+        from: "countries",
+        localField: "_id",
+        foreignField: "_id",
+        as: "country",
+      },
+    },
+    { $unwind: "$country" },
+    {
+      $project: {
+        _id: 0,
+        countryId: "$country._id",
+        name: "$country.name",
+        flag: "$country.flag",
+        users: 1,
+      },
+    },
+  ]);
+  const totalSelections = countries.reduce((sum, c) => sum + c.users, 0);
+  return countries.map((c) => ({
+    ...c,
+    selectionRate:
+      totalSelections > 0
+        ? Number(((c.users / totalSelections) * 100).toFixed(1))
+        : 0,
+  }));
 };
 
-const topViewedRecipes = async (req, res) => {
-  try {
-    const refField = (field) => ({
-      $cond: [
-        { $ifNull: [`$${field}._id`, false] },
-        { _id: `$${field}._id`, name: `$${field}.name` },
-        null,
-      ],
-    });
+const getCountryGrowthData = async (limit) => {
+  const topN = await Baby.aggregate([
+    { $match: { "selectedCountries.0": { $exists: true } } },
+    { $unwind: "$selectedCountries" },
+    { $group: { _id: "$selectedCountries", count: { $sum: 1 } } },
+    { $sort: { count: -1, _id: 1 } },
+    { $limit: limit },
+  ]);
+  const topCountryIds = topN.map((c) => c._id);
 
-    const recipes = await Recipe.aggregate([
-      { $match: { status: "published" } },
-      { $addFields: { views: { $ifNull: ["$views", 0] } } },
-      { $sort: { views: -1, createdAt: -1 } },
-      { $limit: 10 },
-      {
-        $lookup: {
-          from: Country.collection.name,
-          localField: "country",
-          foreignField: "_id",
-          as: "country",
+  const monthly = await Baby.aggregate([
+    { $match: { selectedCountries: { $in: topCountryIds } } },
+    { $unwind: "$selectedCountries" },
+    { $match: { selectedCountries: { $in: topCountryIds } } },
+    {
+      $group: {
+        _id: {
+          country: "$selectedCountries",
+          month: { $month: "$createdAt" },
         },
+        count: { $sum: 1 },
       },
-      { $unwind: { path: "$country", preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: Meals.collection.name,
-          localField: "mealType",
-          foreignField: "_id",
-          as: "mealType",
-        },
+    },
+    {
+      $lookup: {
+        from: "countries",
+        localField: "_id.country",
+        foreignField: "_id",
+        as: "country",
       },
-      { $unwind: { path: "$mealType", preserveNullAndEmptyArrays: true } },
-      {
-        $project: {
-          _id: 1,
-          title: 1,
-          views: 1,
-          country: refField("country"),
-          mealType: refField("mealType"),
-        },
+    },
+    { $unwind: "$country" },
+    {
+      $group: {
+        _id: "$country.name",
+        countryId: { $first: "$country._id" },
+        monthlyData: { $push: { month: "$_id.month", count: "$count" } },
       },
-    ]);
+    },
+  ]);
 
-    return sendResponse({ res, statusCode: 200, data: recipes });
-  } catch (error) {
-    return sendResponse({ res, statusCode: 500, error: error.message });
-  }
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  const rank = (c) => topCountryIds.findIndex((id) => id.equals(c.countryId));
+  monthly.sort((a, b) => rank(a) - rank(b));
+
+  const series = monthly.map((c) => ({
+    name: c._id,
+    data: months.map(
+      (_, i) => c.monthlyData.find((m) => m.month === i + 1)?.count || 0,
+    ),
+  }));
+
+  return { months, series };
 };
 
-const topCountries = async (req, res) => {
-  try {
-    const countries = await Baby.aggregate([
-      { $match: { "selectedCountries.0": { $exists: true } } },
-      { $unwind: "$selectedCountries" },
-      { $group: { _id: "$selectedCountries", users: { $sum: 1 } } },
-      { $sort: { users: -1 } },
-      { $limit: 10 },
-      {
-        $lookup: {
-          from: "countries",
-          localField: "_id",
-          foreignField: "_id",
-          as: "country",
+const getAppDownloads = async () => {
+  const results = await Devices.aggregate([
+    { $unwind: "$devices" },
+    {
+      $group: {
+        _id: {
+          deviceType: "$devices.deviceType",
+          deviceId: "$devices.deviceId",
         },
       },
-      { $unwind: "$country" },
-      {
-        $project: {
-          _id: 0,
-          countryId: "$country._id",
-          name: "$country.name",
-          flag: "$country.flag",
-          users: 1,
-        },
+    },
+    {
+      $group: {
+        _id: "$_id.deviceType",
+        count: { $sum: 1 },
       },
-    ]);
-    const totalSelections = countries.reduce((sum, c) => sum + c.users, 0);
-    const result = countries.map((c) => ({
-      ...c,
-      selectionRate:
-        totalSelections > 0
-          ? Number(((c.users / totalSelections) * 100).toFixed(1))
-          : 0,
-    }));
-    return sendResponse({
-      res,
-      statusCode: 200,
-      translationKey: "data_fetched_successfully",
-      data: result,
-    });
-  } catch (error) {
-    return sendResponse({
-      res,
-      statusCode: 500,
-      translationKey: "internal_server",
-      error: error.message,
-    });
-  }
+    },
+  ]);
+
+  const counts = { android: 0, ios: 0 };
+
+  results.forEach((r) => {
+    if (counts[r._id] !== undefined) {
+      counts[r._id] = r.count;
+    }
+  });
+
+  return {
+    android: counts.android,
+    ios: counts.ios,
+    total: counts.android + counts.ios,
+  };
 };
 
-const getCountryGrowth = async (req, res) => {
-  try {
-    const limit = parseInt(req.query.limit || req.params.limit || 5, 10);
+const makeHandler =
+  (getData, { successKey, errorKey } = {}) =>
+  async (req, res) => {
+    try {
+      const data = await getData(req);
 
-    const topN = await Baby.aggregate([
-      { $match: { "selectedCountries.0": { $exists: true } } },
-      { $unwind: "$selectedCountries" },
-      { $group: { _id: "$selectedCountries", count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: limit },
-    ]);
-    const topCountryIds = topN.map((c) => c._id);
+      return sendResponse({
+        res,
+        statusCode: 200,
+        translationKey: successKey,
+        data,
+      });
+    } catch (error) {
+      return sendResponse({
+        res,
+        statusCode: 500,
+        translationKey: errorKey,
+        error: error.message,
+      });
+    }
+  };
 
-    const monthly = await Baby.aggregate([
-      { $match: { selectedCountries: { $in: topCountryIds } } },
-      { $unwind: "$selectedCountries" },
-      { $match: { selectedCountries: { $in: topCountryIds } } },
-      {
-        $group: {
-          _id: {
-            country: "$selectedCountries",
-            month: { $month: "$createdAt" },
-          },
-          count: { $sum: 1 },
-        },
-      },
-      {
-        $lookup: {
-          from: "countries",
-          localField: "_id.country",
-          foreignField: "_id",
-          as: "country",
-        },
-      },
-      { $unwind: "$country" },
-      {
-        $group: {
-          _id: "$country.name",
-          monthlyData: { $push: { month: "$_id.month", count: "$count" } },
-        },
-      },
-    ]);
+const dashboard = makeHandler(
+  async () => ({ widgets: buildWidgets(await getDashboardCounts()) }),
+  {
+    successKey: "data_fetched_successfully",
+    errorKey: "internal_server_error",
+  },
+);
 
-    const months = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-    ];
-    const series = monthly.map((c) => ({
-      name: c._id,
-      data: months.map(
-        (_, i) => c.monthlyData.find((m) => m.month === i + 1)?.count || 0,
-      ),
-    }));
+const userStatusStats = makeHandler(
+  async () => buildUserStatus(await getDashboardCounts()),
+  { successKey: "data_fetched_successfully", errorKey: "internal_server" },
+);
 
-    return sendResponse({
-      res,
-      statusCode: 200,
-      translationKey: "data_fetched_successfully",
-      data: { months, series },
-    });
-  } catch (error) {
-    return sendResponse({
-      res,
-      statusCode: 500,
-      translationKey: "internal_server",
-      error: error.message,
-    });
-  }
-};
+const platformHealth = makeHandler(async () =>
+  buildPlatformHealth(await getDashboardCounts()),
+);
 
-const appDownloadStats = async (req, res) => {
-  try {
-    const results = await Devices.aggregate([
-      { $unwind: "$devices" },
-      {
-        $group: {
-          _id: {
-            deviceType: "$devices.deviceType",
-            deviceId: "$devices.deviceId",
-          },
-        },
-      },
-      {
-        $group: {
-          _id: "$_id.deviceType",
-          count: { $sum: 1 },
-        },
-      },
-    ]);
+const platformGrowthTrend = makeHandler(() => getGrowthTrend(), {
+  successKey: "data_fetched_successfully",
+  errorKey: "internal_server",
+});
 
-    const counts = { android: 0, ios: 0 };
+const recentActivities = makeHandler(
+  (req) => getRecentActivities(parseInt(req.query.limit, 10) || 5),
+  { successKey: "data_fetched_successfully", errorKey: "internal_server" },
+);
 
-    results.forEach((r) => {
-      if (counts[r._id] !== undefined) {
-        counts[r._id] = r.count;
+const topDownloadedRecipes = makeHandler(() => getTopDownloadedRecipes(), {
+  successKey: "data_fetched_successfully",
+  errorKey: "internal_server",
+});
+
+const downloadsByType = makeHandler(() => getDownloadsByType(), {
+  successKey: "data_fetched_successfully",
+  errorKey: "internal_server",
+});
+
+const topViewedRecipes = makeHandler(() => getTopViewedRecipes());
+
+const topCountries = makeHandler(() => getTopCountries(), {
+  successKey: "data_fetched_successfully",
+  errorKey: "internal_server",
+});
+
+const getCountryGrowth = makeHandler(
+  (req) =>
+    getCountryGrowthData(
+      parseInt(req.query.limit || req.params.limit || 5, 10),
+    ),
+  { successKey: "data_fetched_successfully", errorKey: "internal_server" },
+);
+
+const appDownloadStats = makeHandler(() => getAppDownloads(), {
+  successKey: "data_fetched_successfully",
+  errorKey: "internal_server",
+});
+
+const dashboardAll = async (req, res) => {
+  const countryGrowthLimit = parseInt(req.query.topN, 10) || 5;
+  const activitiesLimit = parseInt(req.query.limit, 10) || 5;
+
+  const counts = getDashboardCounts();
+
+  const sections = {
+    widgets: counts.then(buildWidgets),
+    userStatus: counts.then(buildUserStatus),
+    platformHealth: counts.then(buildPlatformHealth),
+    growthTrend: getGrowthTrend(),
+    countryGrowth: getCountryGrowthData(countryGrowthLimit),
+    recentActivities: getRecentActivities(activitiesLimit),
+    topDownloadedRecipes: getTopDownloadedRecipes(),
+    downloadsByType: getDownloadsByType(),
+    topRecipes: getTopViewedRecipes(),
+    topCountries: getTopCountries(),
+    appDownloads: getAppDownloads(),
+  };
+
+  const data = {};
+  const errors = {};
+
+  await Promise.all(
+    Object.entries(sections).map(async ([key, promise]) => {
+      try {
+        data[key] = await promise;
+      } catch (error) {
+        data[key] = null;
+        errors[key] = error.message;
       }
-    });
+    }),
+  );
 
-    return sendResponse({
-      res,
-      statusCode: 200,
-      translationKey: "data_fetched_successfully",
-      data: {
-        android: counts.android,
-        ios: counts.ios,
-        total: counts.android + counts.ios,
-      },
-    });
-  } catch (error) {
-    return sendResponse({
-      res,
-      statusCode: 500,
-      translationKey: "internal_server",
-      error: error.message,
-    });
-  }
+  const ordered = Object.fromEntries(
+    Object.keys(sections).map((key) => [key, data[key]]),
+  );
+
+  return sendResponse({
+    res,
+    statusCode: 200,
+    translationKey: "data_fetched_successfully",
+    data: Object.keys(errors).length ? { ...ordered, errors } : ordered,
+  });
 };
 
 module.exports = {
   dashboard,
+  dashboardAll,
   userStatusStats,
   platformHealth,
   platformGrowthTrend,

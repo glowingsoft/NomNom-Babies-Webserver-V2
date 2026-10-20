@@ -5617,6 +5617,37 @@
           "name": "Dashboard",
           "item": [
             {
+              "name": "Dashboard (all sections)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}admin/admin-panel/dashboard?topN=5&limit=5",
+                  "host": [
+                    "{{url}}admin"
+                  ],
+                  "path": [
+                    "admin-panel",
+                    "dashboard"
+                  ],
+                  "query": [
+                    {
+                      "key": "topN",
+                      "value": "5",
+                      "description": "How many top countries in countryGrowth (default 5)"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "5",
+                      "description": "How many rows in recentActivities (default 5)"
+                    }
+                  ]
+                },
+                "description": "One call for the whole admin dashboard. Returns widgets, userStatus, platformHealth, growthTrend, countryGrowth, recentActivities, topDownloadedRecipes, downloadsByType, topRecipes, topCountries and appDownloads. If one section fails it is null and listed in data.errors; the rest still load."
+              },
+              "response": []
+            },
+            {
               "name": "Dashboard Widgets",
               "request": {
                 "method": "GET",

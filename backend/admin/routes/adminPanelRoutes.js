@@ -1,6 +1,7 @@
 const express = require("express");
 const {
   dashboard,
+  dashboardAll,
   userStatusStats,
   platformHealth,
   platformGrowthTrend,
@@ -15,6 +16,7 @@ const {
 const auth = require("@middlewares/authMiddleware");
 const router = express.Router();
 
+router.get("/dashboard", auth, dashboardAll);
 router.get("/dashboard/widgets", auth, dashboard);
 router.get("/dashboard/user-status", auth, userStatusStats);
 router.get("/dashboard/platform-health", auth, platformHealth);
