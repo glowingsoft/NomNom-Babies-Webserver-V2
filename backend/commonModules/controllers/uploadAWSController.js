@@ -1,5 +1,6 @@
 const path = require("path");
-const { S3Client, DeleteObjectCommand } = require("@aws-sdk/client-s3");
+const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
+const { s3 } = require("@utils/s3Client");
 const { Upload } = require("@aws-sdk/lib-storage");
 const multer = require("multer");
 const { sendResponse } = require("@utils/responseUtil");
@@ -88,13 +89,6 @@ const uploadFiles = (req, res) => {
   });
 };
 
-const s3 = new S3Client({
-  region: process.env.AWS_S3_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_S3_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_S3_SECRET_ACCESS_KEY,
-  },
-});
 
 const uploadFilesToS3 = async (files) => {
   const limit = pLimit(5);
@@ -133,12 +127,7 @@ const createUploadParams = (file) => {
   const filename = `${uuidv4()}${fileExtension}`;
 
   if (!file.buffer) {
-    return sendResponse({
-      res,
-      statusCode: 400,
-      translationKey: "file_buffer",
-      error: "File buffer is missing",
-    });
+    throw new Error("File buffer is missing");
   }
 
   return {
@@ -146,7 +135,6 @@ const createUploadParams = (file) => {
     Key: filename,
     Body: file.buffer,
     ContentType: file.mimetype,
-    ACL: "public-read-write",
   };
 };
 
@@ -167,12 +155,7 @@ const compressImage = async (buffer) => {
     quality -= 10;
 
     if (quality < 10) {
-      return sendResponse({
-        res,
-        statusCode: 400,
-        translationKey: "image_size_compress",
-        error: "Unable to compress image below 3 MB",
-      });
+      throw new Error("Unable to compress image below 3 MB");
     }
   } while (compressedBuffer.length > MAX_FILE_SIZE);
 

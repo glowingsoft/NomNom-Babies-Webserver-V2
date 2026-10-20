@@ -4278,9 +4278,25 @@
                     "s3"
                   ]
                 },
-                "description": "Uploading single/multiple files is possible"
+                "description": "Uploads single/multiple images (form-data field \"files\", max 20; jpeg, jpg, png, gif, bmp, tiff, webp). Files are stored in a private S3 bucket. The response fileUrl points to the backend media endpoint ({{S3_BASE_URL}}/<key>), which serves the image through a short-lived presigned S3 URL."
               },
-              "response": []
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const data = body.data;",
+                      "const first = Array.isArray(data) ? data[0] : data;",
+                      "if (pm.response.code === 200 && first && first.file) {",
+                      "    pm.environment.set(\"uploadedFile\", first.file);",
+                      "}"
+                    ]
+                  }
+                }
+              ]
             },
             {
               "name": "Delete file s3",
@@ -4345,6 +4361,24 @@
                     "s3"
                   ]
                 }
+              },
+              "response": []
+            },
+            {
+              "name": "Get media file (presigned redirect)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{url}}media/{{uploadedFile}}",
+                  "host": [
+                    "{{url}}media"
+                  ],
+                  "path": [
+                    "{{uploadedFile}}"
+                  ]
+                },
+                "description": "Public endpoint, no auth. Redirects (302) to a short-lived presigned S3 URL, so it can be used directly as an <img src>. Key = the \"file\" value returned by Upload file s3. Postman follows the redirect and shows the image."
               },
               "response": []
             }

@@ -40,7 +40,7 @@ const securityMiddleware = (app, options = {}) => {
   const limiter = rateLimit({
     windowMs: rateLimitWindow,
     max: rateLimitMax,
-    skip: (req) => req.method === "OPTIONS",
+    skip: (req) => req.method === "OPTIONS" || req.path.startsWith("/api/media/"),
     message: {
       status: 429,
       message: "Too many requests from this IP, please try again later",
