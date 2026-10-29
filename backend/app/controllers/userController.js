@@ -11,6 +11,7 @@ const { NotificationTypes } = require("@models/Notifications");
 const validator = require("validator");
 const { userCache } = require("@config/nodeCache");
 const Baby = require("@models/Baby");
+const { Devices, createOrSkipDevice } = require("@models/Devices");
 const { babyPopulate, getBabyInfo } = require("@utils/babyUtil");
 
 const blockUser = async (req, res) => {
@@ -339,7 +340,7 @@ const getUserProfile = async (req, res, next, fieldsToPopulate = []) => {
 
     let query = User.findById(currentUser._id).populate(
       "onboarding.selectedCountries",
-      "_id name signatureFoods",
+      "_id name code signatureFoods",
     );
 
     if (fieldsToPopulate.length > 0) {
@@ -549,7 +550,7 @@ const updateUserProfile = async (req, res, next) => {
 
     let query = User.findById(currentUser._id).populate(
       "onboarding.selectedCountries",
-      "_id name signatureFoods",
+      "_id name code signatureFoods",
     );
 
     Object.keys(populationFields).forEach((field) => {
@@ -592,7 +593,45 @@ const updateUserProfile = async (req, res, next) => {
   }
 };
 
+/**
+ * Registers the caller's push token (FCM). Send `previousDeviceId` when the token was refreshed so the stale
+ * one is removed.
+ */
+const registerDevice = async (req, res) => {
+  if (
+    !validateParams(req, res, {
+      rawData: ["deviceId", "deviceType"],
+      enumFields: { deviceType: ["android", "ios"] },
+    })
+  )
+    return;
+
+  const { deviceId, deviceType, previousDeviceId } = req.body;
+  try {
+    if (previousDeviceId && previousDeviceId !== deviceId) {
+      await Devices.updateOne(
+        { userId: req.user._id },
+        { $pull: { devices: { deviceId: previousDeviceId } } },
+      );
+    }
+    await createOrSkipDevice(req.user._id, deviceId, deviceType);
+    return sendResponse({
+      res,
+      statusCode: 200,
+      translationKey: "device_registered",
+    });
+  } catch (error) {
+    return sendResponse({
+      res,
+      statusCode: 500,
+      translationKey: "internal_server",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
+  registerDevice,
   blockUser,
   reportUser,
   addOrUpdateSubscription,

@@ -3,6 +3,7 @@ const {
   parsePaginationParams,
   generateMeta,
   validateParams,
+  getUserToday,
 } = require("@utils/responseUtil");
 const { User } = require("@models/UserModel");
 const FoodLog = require("@models/FoodLog");
@@ -27,7 +28,7 @@ const createFoodLog = async (req, res) => {
       });
     }
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = getUserToday(req.user);
 
     const log = await FoodLog.create({
       baby: user.activeBaby,

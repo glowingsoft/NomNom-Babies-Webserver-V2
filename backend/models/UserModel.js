@@ -60,6 +60,13 @@ const userSchema = new mongoose.Schema(
         message: "email_invalid",
       },
     },
+    // Set when the account is deleted (helperUtils/hardDeleteUser.js); the live fields are cleared.
+    deletionMeta: {
+      deletedAt: { type: Date },
+      previousEmail: { type: String },
+      previousPhoneNumber: { type: String },
+      previousProvider: { type: String },
+    },
     previousEmail: {
       type: String,
       default: "",

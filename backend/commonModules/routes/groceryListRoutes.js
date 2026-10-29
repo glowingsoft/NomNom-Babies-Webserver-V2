@@ -49,8 +49,9 @@ router.patch("/items", auth, updateItemRateLimiter, updateGroceryItems);
 
 router.delete("/item/:itemId", auth, removeItemRateLimiter, removeGroceryItem);
 
+// Must be registered before "/:recipeId", otherwise "clear" is matched as a recipe id.
+router.delete("/clear", auth, clearListRateLimiter, clearGroceryList);
 router.delete("/:recipeId", auth, removeRecipeFromGroceryList);
 
-router.delete("/clear", auth, clearListRateLimiter, clearGroceryList);
 
 module.exports = router;

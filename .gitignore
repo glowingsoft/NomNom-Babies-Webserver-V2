@@ -137,3 +137,7 @@ backend/secretAssets/
 uploads*
 # macOS
 .DS_Store
+
+# Firebase Admin service-account keys (never commit)
+secrets/
+*firebase-adminsdk*.json

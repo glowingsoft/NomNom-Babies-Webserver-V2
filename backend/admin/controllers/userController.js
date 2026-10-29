@@ -478,6 +478,7 @@ const updateUserStatus = async (req, res) => {
     }
 
     await user.save();
+    userCache.del(String(user._id));
 
     return sendResponse({
       res,
@@ -510,6 +511,7 @@ const deleteUser = async (req, res) => {
     }
 
     await User.findByIdAndDelete(id);
+    userCache.del(String(id));
 
     return sendResponse({
       res,

@@ -17,7 +17,7 @@ const getCountries = async (req, res) => {
     const [countries, totalCountries] = await Promise.all([
       Country.find({ isEnabled: true })
         .sort({ name: 1 })
-        .select("name signatureFoods")
+        .select("name code signatureFoods")
         .skip((page - 1) * limit)
         .limit(limit),
       Country.countDocuments({ isEnabled: true }),
@@ -107,7 +107,7 @@ const selectCountries = async (req, res) => {
     const countries = await Country.find({
       _id: { $in: countryIds },
       isEnabled: true,
-    }).select("name signatureFoods");
+    }).select("name code signatureFoods");
 
     if (countries.length !== countryIds.length) {
       return sendResponse({
@@ -124,7 +124,7 @@ const selectCountries = async (req, res) => {
         "onboarding.completed": true,
       },
       { new: true },
-    ).populate("onboarding.selectedCountries", "_id name signatureFoods");
+    ).populate("onboarding.selectedCountries", "_id name code signatureFoods");
 
     void logActivity({
       user: req.user._id,

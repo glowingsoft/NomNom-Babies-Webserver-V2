@@ -1,5 +1,6 @@
 const FavoriteRecipe = require("@models/FavoriteRecipe");
 const Recipe = require("@models/Recipe");
+const Meals = require("@models/Meals");
 const { User } = require("@models/UserModel");
 const {
   sendResponse,
@@ -218,6 +219,11 @@ const getFavorites = async (req, res) => {
             mealType: "$recipe.mealType",
           },
         },
+        ...lookupOne({
+          from: Meals.collection.name,
+          field: "mealType",
+          fields: ["_id", "name"],
+        }),
       ]),
 
       FavoriteRecipe.countDocuments(query),

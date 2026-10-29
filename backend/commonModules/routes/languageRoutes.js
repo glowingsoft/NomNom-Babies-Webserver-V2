@@ -8,6 +8,6 @@ const express = require("express");
 const router = express.Router();
 
 router.get("/", getLanguages);
-router.put("user", auth, updateUserLanguage);
+router.put("/user", auth, updateUserLanguage);
 
 module.exports = router;

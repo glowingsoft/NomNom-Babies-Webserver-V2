@@ -111,7 +111,7 @@ const babyPopulateStages = () => [
   ...lookupMany({
     from: Country.collection.name,
     field: "selectedCountries",
-    fields: ["_id", "name", { name: "signatureFoods", default: [] }],
+    fields: ["_id", "name", "code", { name: "signatureFoods", default: [] }],
   }),
 ];
 

@@ -91,8 +91,9 @@ const getNotifications = async (req, res) => {
 
 const readNotification = async (req, res) => {
   try {
-    const notification = await NotificationExp.findByIdAndUpdate(
-      req.params.id,
+    // Only the receiver can mark a notification as read.
+    const notification = await NotificationExp.findOneAndUpdate(
+      { _id: req.params.id, receiverId: req.user._id },
       { isRead: true },
       { new: true },
     );
@@ -120,7 +121,27 @@ const readNotification = async (req, res) => {
   }
 };
 
+/** Non-production helper: saves and pushes a test notification to the caller's own devices. */
+const sendTestNotification = async (req, res) => {
+  const { sendUserNotifications } = require("./communicationController");
+  const { title = "NomNom Babies", body = "Test notification 🎉" } = req.body || {};
+
+  sendUserNotifications({
+    recipientIds: [req.user._id],
+    title,
+    body,
+    data: { type: "system", objectType: "Test" },
+  });
+
+  return sendResponse({
+    res,
+    statusCode: 202,
+    translationKey: "notification_queued",
+  });
+};
+
 module.exports = {
   getNotifications,
   readNotification,
+  sendTestNotification,
 };

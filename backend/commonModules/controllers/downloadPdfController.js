@@ -24,7 +24,14 @@ const { generateRecipePdf } = require("@utils/downloadPdf/recipeDetailPdf");
 
 const { generateGroceryPdf } = require("@utils/downloadPdf/groceryListPdf");
 
-const { sendResponse, parsePaginationParams, generateMeta } = require("@utils/responseUtil");
+const {
+  sendResponse,
+  parsePaginationParams,
+  generateMeta,
+  getUserToday,
+  validateParams,
+} = require("@utils/responseUtil");
+const mongoose = require("mongoose");
 const FeedingLog = require("@models/FeedingLog");
 const { savePdf } = require("@utils/downloadPdf/pdfStorage");
 const { logActivity } = require("@utils/activityUtil");
@@ -41,7 +48,11 @@ const downloadFeedingTimeTablePdf = async (req, res) => {
         translationKey: "baby_not_found",
       });
     }
-    const today = new Date().toISOString().split("T")[0];
+    if (!validateParams(req, res, { dateFields: { date: "YYYY-MM-DD" } })) {
+      return;
+    }
+    // ?date=YYYY-MM-DD exports a stored timetable; defaults to the user's today.
+    const today = req.query.date || getUserToday(req.user);
 
     const baby =
       (
@@ -56,7 +67,7 @@ const downloadFeedingTimeTablePdf = async (req, res) => {
       baby: baby._id,
       user: req.user._id,
       date: today,
-    }).sort({ time: 1 });
+    }).sort({ timeMinutes: 1, time: 1 });
 
     const logs = await FeedingLog.find({
       baby: baby._id,
@@ -108,7 +119,7 @@ const downloadFeedingTimeTablePdf = async (req, res) => {
       feedingNotes,
     });
 
-    const relativePath = await savePdf(pdf, `feeding-${baby._id}.pdf`);
+    const relativePath = await savePdf(pdf, `feeding-${baby._id}-${today}.pdf`);
 
     const pdfUrl = `${req.protocol}://${req.get("host")}${relativePath}`;
 
@@ -122,6 +133,7 @@ const downloadFeedingTimeTablePdf = async (req, res) => {
       targetId: baby._id,
       metadata: {
         date: today,
+        pdfPath: relativePath,
         completionRate,
         totalMeals: recommendedToday.length,
       },
@@ -258,6 +270,7 @@ const downloadRecipePdf = async (req, res) => {
       module: "recipe",
       targetId: recipe._id,
       metadata: {
+        pdfPath: relativePath,
         recipeId: recipe._id,
         recipeTitle: recipe.title,
         mealType: recipe.mealType,
@@ -375,6 +388,7 @@ const downloadGroceryPdf = async (req, res) => {
       baby: grocery.baby || null,
       targetId: grocery._id,
       metadata: {
+        pdfPath: relativePath,
         recipes: grocery.recipes.length,
         ingredients: groceryChecklist.length,
       },
@@ -408,6 +422,10 @@ const getDownloadedPdfs = async (req, res) => {
 
     const validModules = ["recipe", "feeding_timetable", "grocery_list"];
     const baseMatch = { action: "download", module: { $in: validModules } };
+    // App users only see their own downloads; admins see everyone's (dashboard).
+    if (req.user.role !== "admin") {
+      baseMatch.user = new mongoose.Types.ObjectId(String(req.user._id));
+    }
 
     const pipeline = [
       { $match: baseMatch },
@@ -538,6 +556,9 @@ const getDownloadedPdfs = async (req, res) => {
                 userEmail: { $ifNull: ["$userDoc.email", "—"] },
                 downloadedAt: "$createdAt",
                 pdfPath: "$metadata.pdfPath",
+                recipeId: "$metadata.recipeId",
+                recipeTitle: "$metadata.recipeTitle",
+                date: "$metadata.date",
                 countries: {
                   $map: {
                     input: "$countryDocs",
@@ -615,4 +636,4 @@ module.exports = {
   downloadGroceryPdf,
   getDownloadedPdfs,
 };
-
+

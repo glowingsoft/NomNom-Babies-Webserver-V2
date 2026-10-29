@@ -6,7 +6,7 @@ const FeedingSchedule = require("@models/FeedingSchedule");
 const moment = require("moment");
 
 const { User } = require("@models/UserModel");
-const { sendResponse } = require("@utils/responseUtil");
+const { sendResponse, getUserToday } = require("@utils/responseUtil");
 const FoodTracker = require("@models/FoodTracker");
 const { getBabyInfo, babyPopulate } = require("@utils/babyUtil");
 
@@ -38,7 +38,7 @@ const getHome = async (req, res) => {
       });
     }
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = getUserToday(req.user);
 
     const [
       feedingSchedule,
@@ -50,7 +50,7 @@ const getHome = async (req, res) => {
     ] = await Promise.all([
       FeedingSchedule.find({
         baby: baby._id,
-      }).sort({ date: 1, time: 1 }),
+      }).sort({ date: 1, timeMinutes: 1, time: 1 }),
 
       FeedingLog.find({
         baby: baby._id,
@@ -72,6 +72,7 @@ const getHome = async (req, res) => {
         isActive: true,
       })
         .populate("country")
+        .populate("mealType", "name")
         .limit(6),
 
       Nutrition.findOne({

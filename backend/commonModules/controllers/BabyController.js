@@ -84,7 +84,7 @@ const createBaby = async (req, res) => {
 
     await baby.populate([
       { path: "babyStage", select: "_id title features" },
-      { path: "selectedCountries", select: "_id name signatureFoods" },
+      { path: "selectedCountries", select: "_id name code signatureFoods" },
     ]);
 
     void logActivity({

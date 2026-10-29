@@ -17,8 +17,8 @@ const getBabyStages = async (req, res) => {
   try {
     const [stages, totalStages] = await Promise.all([
       BabyStage.find({ active: true })
-        .sort({ createdAt: 1 })
-        .select("title features")
+        .sort({ sortOrder: 1, createdAt: 1 })
+        .select("title features sortOrder")
         .skip((page - 1) * limit)
         .limit(limit),
 
@@ -182,7 +182,7 @@ const adminGetBabyStages = async (req, res) => {
   try {
     const [stages, totalStages] = await Promise.all([
       BabyStage.find(filters)
-        .sort({ createdAt: 1 })
+        .sort({ sortOrder: 1, createdAt: 1 })
         .skip((page - 1) * limit)
         .limit(limit),
       BabyStage.countDocuments(filters),
@@ -247,7 +247,7 @@ const adminGetBabyStages = async (req, res) => {
 };
 
 const createBabyStage = async (req, res) => {
-  const { title, features = [] } = req.body;
+  const { title, features = [], sortOrder = 0 } = req.body;
 
   try {
     const validationOptions = {
@@ -270,7 +270,7 @@ const createBabyStage = async (req, res) => {
       });
     }
 
-    const stage = new BabyStage({ title: title.trim(), features });
+    const stage = new BabyStage({ title: title.trim(), features, sortOrder });
     await stage.save();
 
     void logActivity({
@@ -303,7 +303,7 @@ const createBabyStage = async (req, res) => {
 };
 
 const updateBabyStage = async (req, res) => {
-  const { title, features, active } = req.body;
+  const { title, features, active, sortOrder } = req.body;
 
   try {
     const validationOptions = {
@@ -328,6 +328,10 @@ const updateBabyStage = async (req, res) => {
 
     if (features !== undefined) {
       stage.features = features;
+    }
+
+    if (sortOrder !== undefined) {
+      stage.sortOrder = sortOrder;
     }
 
     if (active !== undefined) {

@@ -156,25 +156,16 @@ const sendNotificationControllerForTesting = async (req, res) => {
 
   try {
 
-    const response = await sendNotification(recipients, {
+    const results = await sendNotification(recipients, {
       title: title,
       body: body,
-      data: data,
+      data: toFcmData(data || {}),
     });
 
-    const successIds = [];
-    const failureIds = [];
-
-    response.responses.forEach((resp, idx) => {
-      if (resp.success) {
-        successIds.push(recipients[idx]);
-      } else {
-        failureIds.push({
-          ...recipients[idx],
-          error: resp.error ? resp.error.message : "Unknown error",
-        });
-      }
-    });
+    const successIds = results.filter((r) => r.success).map((r) => r.token);
+    const failureIds = results
+      .filter((r) => !r.success)
+      .map((r) => ({ token: r.token, error: r.errorCode || "Unknown error" }));
 
     if (successIds.length > 0) {
       return sendResponse({
@@ -209,12 +200,30 @@ const sendNotificationControllerForTesting = async (req, res) => {
   }
 };
 
-/**
- * Sends a notification to multiple users based on their user IDs.
- *
- * @param {Object} param0 - Object containing recipientIds (array), title (string), body (string), and optional data (object).
- */
+/** FCM `data` payloads only accept string values. */
+const toFcmData = (data) =>
+  Object.fromEntries(
+    Object.entries(data).map(([k, v]) => [
+      k,
+      v == null ? "" : typeof v === "string" ? v : String(v),
+    ]),
+  );
 
+const isFirebaseReady = () => adminFireBConfig.apps.length > 0;
+
+// FCM error codes meaning the token will never work again.
+const DEAD_TOKEN_CODES = [
+  "messaging/registration-token-not-registered",
+  "messaging/invalid-registration-token",
+  "messaging/invalid-argument",
+];
+
+/**
+ * Saves an in-app notification for each recipient and pushes it to their registered devices.
+ * The in-app notification is stored even when push fails (no devices, Firebase not configured, bad tokens).
+ *
+ * @param {Object} param0 - recipientIds (array), title, body, optional data / sender / objectId.
+ */
 const sendUserNotifications = async ({
   recipientIds,
   title,
@@ -226,76 +235,55 @@ const sendUserNotifications = async ({
 }) => {
   setImmediate(async () => {
     try {
+      if (saveNotification) {
+        await NotificationExp.insertMany(
+          recipientIds.map((receiverId) => ({
+            type: data.type || "system",
+            subjectId: sender,
+            objectId,
+            objectType: data.objectType,
+            receiverId,
+            title,
+            body,
+          })),
+        );
+      }
+
+      if (!isFirebaseReady()) {
+        console.warn("Push skipped — Firebase Admin is not configured.");
+        return;
+      }
+
       const recipientDevices = await Devices.find({
         userId: { $in: recipientIds },
       }).select("userId devices");
 
-      if (recipientDevices && recipientDevices.length > 0) {
-        const flattenedDevices = recipientDevices.flatMap((userDevice) =>
-          userDevice.devices.map((device) => ({
-            userId: userDevice.userId,
-            deviceId: device.deviceId,
-            deviceType: device.deviceType,
-          })),
-        );
+      const pushData = toFcmData({
+        ...data,
+        subjectId: sender,
+        objectId,
+      });
 
-        const devicesByUser = flattenedDevices.reduce((acc, device) => {
-          if (!acc[device.userId]) {
-            acc[device.userId] = new Set();
-          }
-          acc[device.userId].add(device);
-          return acc;
-        }, {});
-        const responses = [];
-
-        for (const userId in devicesByUser) {
-          const userDevices = Array.from(devicesByUser[userId]).map(
-            (device) => ({
-              deviceId: device.deviceId,
-              deviceType: device.deviceType,
-            }),
-          );
-
-          const sendNotificationPromise = sendNotification(userDevices, {
+      for (const userDevice of recipientDevices) {
+        if (!userDevice.devices.length) continue;
+        try {
+          const results = await sendNotification(userDevice.devices, {
             title,
             body,
-            data: {
-              ...data,
-              subjectId: sender ? sender.toString() : null,
-              objectId: objectId.toString(),
-            },
+            data: pushData,
           });
-
-          const sendNotificationResponse = await sendNotificationPromise;
-          responses.push({ userId, sendNotificationResponse });
+          const deadTokens = results
+            .filter((r) => !r.success && DEAD_TOKEN_CODES.includes(r.errorCode))
+            .map((r) => r.token);
+          if (deadTokens.length) {
+            await Devices.updateOne(
+              { _id: userDevice._id },
+              { $pull: { devices: { deviceId: { $in: deadTokens } } } },
+            );
+          }
+        } catch (error) {
+          console.error(`Push to user ${userDevice.userId} failed:`, error.message);
         }
-
-        console.log(data);
-
-        responses.forEach((response) => {
-          console.log(
-            `Response for user ${response.userId}:`,
-            JSON.stringify(response.sendNotificationResponse, null, 2),
-          );
-        });
-
-        if (!saveNotification) {
-          return;
-        }
-
-        const notificationsToSave = responses.map(({ userId }) => ({
-          type: data.type || "system",
-          subjectId: sender,
-          objectId: objectId,
-          objectType: data.objectType,
-          receiverId: userId,
-          title,
-          body,
-        }));
-
-        await NotificationExp.insertMany(notificationsToSave);
-      } else {
-        console.log("No devices found for the provided user IDs.");
       }
     } catch (error) {
       console.error("Error sending notifications in background:", error);
@@ -303,79 +291,47 @@ const sendUserNotifications = async ({
   });
 };
 
+/**
+ * Sends one push to every device; returns `{ token, success, errorCode }` per device.
+ */
 const sendNotification = async (recipients, payload) => {
-  const androidTokens = [];
-  const iosTokens = [];
-
+  const byPlatform = { android: [], ios: [] };
   recipients.forEach((recipient) => {
-    if (recipient.deviceType === "android") {
-      androidTokens.push(recipient.deviceId);
-    } else if (recipient.deviceType === "ios") {
-      iosTokens.push(recipient.deviceId);
+    if (recipient.deviceId && byPlatform[recipient.deviceType]) {
+      byPlatform[recipient.deviceType].push(recipient.deviceId);
     }
   });
 
-  const androidPayload = {
-    notification: {
-      title: payload.title,
-      body: payload.body,
+  const notification = { title: payload.title, body: payload.body };
+  const messages = {
+    android: {
+      notification,
+      data: payload.data,
+      android: { priority: "high", notification: { sound: "default" } },
     },
-    data: payload.data,
+    ios: {
+      notification,
+      data: payload.data,
+      apns: { payload: { aps: { sound: "default", badge: 1 } } },
+    },
   };
 
-  const iosPayload = {
-    notification: {
-      title: payload.title,
-      body: payload.body,
-    },
-    apns: {
-      payload: {
-        aps: {
-          alert: {
-            title: payload.title,
-            body: payload.body,
-          },
-          sound: "default",
-          badge: 1,
-        },
-      },
-    },
-    data: payload.data,
-  };
-
-  try {
-    const promises = [];
-
-    if (androidTokens.length > 0) {
-      const androidPromise = adminFireBConfig.messaging().sendEachForMulticast({
-        tokens: androidTokens,
-        ...androidPayload,
-      });
-      promises.push(androidPromise);
-    }
-
-    if (iosTokens.length > 0) {
-      const iosPromise = adminFireBConfig.messaging().sendEachForMulticast({
-        tokens: iosTokens,
-        ...iosPayload,
-      });
-      promises.push(iosPromise);
-    }
-
-    const responses = await Promise.all(promises);
-
-    const result = {
-      responses: [],
-    };
-
-    responses.forEach((response) => {
-      result.responses = result.responses.concat(response.responses);
-    });
-    return result;
-  } catch (error) {
-    console.error("Error sending notifications:", error);
-    throw error;
+  const results = [];
+  for (const platform of ["android", "ios"]) {
+    const tokens = byPlatform[platform];
+    if (!tokens.length) continue;
+    const response = await adminFireBConfig
+      .messaging()
+      .sendEachForMulticast({ tokens, ...messages[platform] });
+    response.responses.forEach((r, i) =>
+      results.push({
+        token: tokens[i],
+        success: r.success,
+        errorCode: r.error?.code,
+      }),
+    );
   }
+  return results;
 };
 
 const vonage = new Vonage({

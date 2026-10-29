@@ -106,6 +106,11 @@ const getRecipes = async (req, res) => {
           fields: ["_id", "name"],
         }),
         ...lookupOne({
+          from: Meals.collection.name,
+          field: "mealType",
+          fields: ["_id", "name"],
+        }),
+        ...lookupOne({
           from: BabyStage.collection.name,
           field: "babyStage",
           fields: ["_id", "title"],
@@ -180,6 +185,11 @@ const getRecipeById = async (req, res) => {
       ...lookupOne({
         from: Country.collection.name,
         field: "country",
+        fields: ["_id", "name"],
+      }),
+      ...lookupOne({
+        from: Meals.collection.name,
+        field: "mealType",
         fields: ["_id", "name"],
       }),
       ...lookupOne({
@@ -462,6 +472,11 @@ const getBabyRecipes = async (req, res) => {
           fields: ["_id", "name"],
         }),
         ...lookupOne({
+          from: Meals.collection.name,
+          field: "mealType",
+          fields: ["_id", "name"],
+        }),
+        ...lookupOne({
           from: BabyStage.collection.name,
           field: "babyStage",
           fields: ["_id", "title"],
@@ -585,6 +600,11 @@ const getCustomCulturalPicks = async (req, res) => {
         ...lookupOne({
           from: Country.collection.name,
           field: "country",
+          fields: ["_id", "name"],
+        }),
+        ...lookupOne({
+          from: Meals.collection.name,
+          field: "mealType",
           fields: ["_id", "name"],
         }),
         {

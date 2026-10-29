@@ -8,8 +8,19 @@ const { sendOtpEmail } = require("@utils/emailUtil");
 const { createOrSkipDevice, Devices } = require("@models/Devices");
 const validator = require("validator");
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const jwksClient = require("jwks-rsa");
+const { OAuth2Client } = require("google-auth-library");
 const { babyPopulate, getBabyInfo } = require("@utils/babyUtil");
 const { logActivity } = require("@utils/activityUtil");
+const { hardDeleteUserById, DELETED_STATUS } = require("@utils/hardDeleteUser");
+const { userCache } = require("@config/nodeCache");
+
+/**
+ * Echoes the OTP in the response for development / QA builds only, so testers don't need the inbox.
+ * Production never returns it.
+ */
+const exposeOtp = (otp) => (process.env.NODE_ENV === "prod" ? {} : { otp });
 
 const normalizeRole = (role) => {
   if (!role) {
@@ -161,7 +172,7 @@ const register = async (req, res) => {
           data: {
             ...response,
 
-            otp,
+            ...exposeOtp(otp),
           },
         });
       }
@@ -211,7 +222,7 @@ const register = async (req, res) => {
       translationKey: "signup_successful",
       data: {
         ...response,
-        otp,
+        ...exposeOtp(otp),
       },
     });
   } catch (error) {
@@ -297,7 +308,7 @@ const login = async (req, res) => {
         translationKey: "your_account",
 
         data: {
-          otp,
+          ...exposeOtp(otp),
         },
       });
     }
@@ -464,7 +475,7 @@ const generateOtp = async (req, res) => {
       res,
       statusCode: 201,
       translationKey: "otp_generated",
-      data: { otp },
+      data: { ...exposeOtp(otp) },
     });
   } catch (error) {
 
@@ -641,7 +652,7 @@ const forgetPassword = async (req, res) => {
       statusCode: 200,
       translationKey: "otp_sent_successfully",
       data: {
-        otp,
+        ...exposeOtp(otp),
       },
     });
   } catch (error) {
@@ -746,36 +757,23 @@ const logout = async (req, res) => {
 };
 const deleteAccount = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const email = req.user.email;
+    const result = await hardDeleteUserById(req.user._id);
 
-    const randomEmail = `deleted_user_${userId}_${Date.now()}@example.com`;
-
-    await User.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          email: randomEmail,
-          previousEmail: email,
-          "accountState.status": "sotDeleted",
-          "accountState.finalDeletionDate": new Date(),
-        },
-      },
-      { new: true },
-    );
-
-    await Devices.updateOne(
-      { userId: userId },
-      { $set: { devices: [] } },
-    );
+    if (!result) {
+      return sendResponse({
+        res,
+        statusCode: 404,
+        translationKey: "user_not_found",
+      });
+    }
 
     logActivity({
-      user: userId,
-      userType,
+      user: req.user._id,
+      userType: req.user.userType,
       action: "Account Deleted",
-      detail: `${email} deleted their account`,
+      detail: `${req.user.email} deleted their account`,
       module: "auth",
-      targetId: userId,
+      targetId: req.user._id,
     });
 
     return sendResponse({
@@ -788,44 +786,101 @@ const deleteAccount = async (req, res) => {
       res,
       statusCode: 500,
       translationKey: error.message,
-      error: error,
+      error,
     });
   }
 };
 
+const googleClient = new OAuth2Client();
+const appleKeys = jwksClient({ jwksUri: "https://appleid.apple.com/auth/keys" });
+
+/**
+ * Verifies the provider's ID token and returns the identity it vouches for. The client-sent socialId / email
+ * are never trusted.
+ * Env: GOOGLE_CLIENT_IDS (comma-separated OAuth client ids allowed as audience), APPLE_BUNDLE_IDS.
+ */
+const verifySocialToken = async (provider, idToken) => {
+  const list = (v) => (v || "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (provider === "google") {
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: list(process.env.GOOGLE_CLIENT_IDS),
+    });
+    const p = ticket.getPayload();
+    return { socialId: p.sub, email: p.email, name: p.name };
+  }
+  if (provider === "apple") {
+    const { header } = jwt.decode(idToken, { complete: true }) || {};
+    const key = await appleKeys.getSigningKey(header?.kid);
+    const p = jwt.verify(idToken, key.getPublicKey(), {
+      algorithms: ["RS256"],
+      issuer: "https://appleid.apple.com",
+      audience: list(process.env.APPLE_BUNDLE_IDS || "com.nomnombabies"),
+    });
+    return { socialId: p.sub, email: p.email, name: null };
+  }
+  throw new Error("unsupported_provider");
+};
+
 const socialAuth = async (req, res) => {
-  const { provider, socialId, email, name, deviceId, deviceType, timezone } =
-    req.body;
+  const { provider, idToken, deviceId, deviceType, timezone } = req.body;
 
+  const validationOptions = {
+    rawData: ["provider", "idToken", "deviceId", "deviceType", "timezone"],
+    enumFields: {
+      provider: ["google", "apple"],
+    },
+  };
+  if (!validateParams(req, res, validationOptions)) {
+    return;
+  }
+
+  let identity;
   try {
-    const validationOptions = {
-      rawData: [
-        "provider",
-        "socialId",
-        "email",
-        "name",
-        "deviceId",
-        "deviceType",
-        "timezone",
-      ],
-      enumFields: {
-        provider: ["google", "facebook", "apple"],
-      },
-    };
+    identity = await verifySocialToken(provider, idToken);
+  } catch (error) {
+    return sendResponse({
+      res,
+      statusCode: 401,
+      translationKey: "invalid_social_token",
+      error,
+    });
+  }
 
-    if (!validateParams(req, res, validationOptions)) {
-      return;
-    }
+  const { socialId } = identity;
+  const providerField = `${provider}Id`;
+  // Apple shares the name only on the first sign-in, so the client sends it along.
+  const name = (identity.name || req.body.name || "").trim();
+  // No email (e.g. Apple without email scope): derive a stable placeholder from the provider id.
+  const email = String(identity.email || `${socialId}@${provider}.com`)
+    .trim()
+    .toLowerCase();
 
-    const existingUser = await User.findOne({ email });
+  if (!validator.isEmail(email)) {
+    return sendResponse({
+      res,
+      statusCode: 400,
+      translationKey: "email_invalid",
+    });
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    // Deleted accounts are not recoverable: the same email / social id creates a new user.
+    const existingUser = await User.findOne({
+      $or: [{ [providerField]: socialId }, { email }],
+      "accountState.status": { $ne: DELETED_STATUS },
+    }).session(session);
+
+    let user;
+    let isNewUser = false;
+    let providerLinked = false;
 
     if (existingUser) {
-      let providerLinked = false;
-
-      if (
-        existingUser.accountState.status === "restricted" ||
-        existingUser.accountState.status === "suspended"
-      ) {
+      if (["restricted", "suspended"].includes(existingUser.accountState.status)) {
+        await session.abortTransaction();
+        session.endSession();
         return sendResponse({
           res,
           statusCode: 403,
@@ -833,112 +888,85 @@ const socialAuth = async (req, res) => {
         });
       }
 
-      if (provider === "google" && !existingUser.googleId) {
-        existingUser.googleId = socialId;
-        providerLinked = true;
-      } else if (provider === "facebook" && !existingUser.facebookId) {
-        existingUser.facebookId = socialId;
-        providerLinked = true;
-      } else if (provider === "apple" && !existingUser.appleId) {
-        existingUser.appleId = socialId;
+      if (!existingUser[providerField]) {
+        existingUser[providerField] = socialId;
         providerLinked = true;
       }
-
+      // A verified provider email replaces a placeholder / older one.
+      if (identity.email && existingUser.email !== email) {
+        existingUser.email = email;
+      }
+      existingUser.verificationStatus.email = "verified";
       existingUser.provider = provider;
-      existingUser.timezone = timezone;
+      existingUser.timezone = timezone || existingUser.timezone;
       existingUser.accountState.status = "active";
-      existingUser.name = name;
-      existingUser.parentCaregiverName = name;
-
-      await existingUser.save();
-
-      await createOrSkipDevice(existingUser._id, deviceId, deviceType);
-      const token = existingUser.generateAuthToken();
-
-      let activeBaby = null;
-
-      if (existingUser.activeBaby) {
-        activeBaby = await Baby.findById(existingUser.activeBaby).populate(
-          babyPopulate,
-        );
+      if (name && !existingUser.name) existingUser.name = name;
+      if (name && !existingUser.parentCaregiverName) {
+        existingUser.parentCaregiverName = name;
       }
 
-      const response = formatUserResponse(
-        existingUser,
-        token,
-        [],
-        ["resetToken"],
-      );
-
-      response.babyInfo = activeBaby ? getBabyInfo(activeBaby) : null;
-      response.hasBaby = !!activeBaby;
-
-      logActivity({
-        user: existingUser._id,
-        userType: existingUser.accountState.userType,
-        action: "User Logged In",
-        detail: `${existingUser.name} logged in via ${provider}${providerLinked ? " (newly linked)" : ""}`,
-        module: "auth",
-        targetId: existingUser._id,
-        metadata: { provider },
-      });
-
-      return sendResponse({
-        res,
-        statusCode: 200,
-        translationKey: "login_success",
-        data: response,
-      });
+      await existingUser.save({ session });
+      user = existingUser;
     } else {
-      const newUser = new User({
+      const fallbackName = name || email.split("@")[0];
+      user = new User({
         email,
-        name,
-        parentCaregiverName: name,
+        name: fallbackName,
+        parentCaregiverName: fallbackName,
         provider,
-        [`${provider}Id`]: socialId,
+        [providerField]: socialId,
         timezone,
-        verificationStatus: {
-          email: "verified",
-        },
-        accountState: {
-          userType: "user",
-          status: "active",
-        },
+        verificationStatus: { email: "verified" },
+        accountState: { userType: "user", status: "active" },
       });
-
-      await newUser.save();
-
-      await createOrSkipDevice(newUser._id, deviceId, deviceType);
-      const token = newUser.generateAuthToken();
-
-      const response = formatUserResponse(newUser, token, [], ["resetToken"]);
-
-      response.babyInfo = null;
-      response.hasBaby = false;
-
-      logActivity({
-        user: newUser._id,
-        userType: newUser.accountState.userType,
-        action: "User Signed Up",
-        detail: `${newUser.name} signed up via ${provider}`,
-        module: "auth",
-        targetId: newUser._id,
-        metadata: { provider },
-      });
-
-      return sendResponse({
-        res,
-        statusCode: 201,
-        translationKey: "signup_successful",
-        data: response,
-      });
+      await user.save({ session });
+      isNewUser = true;
     }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    if (typeof deviceId === "string" && deviceId.trim() && deviceType) {
+      await createOrSkipDevice(user._id, deviceId, deviceType);
+    }
+
+    const token = user.generateAuthToken();
+    const activeBaby = user.activeBaby
+      ? await Baby.findOne({ _id: user.activeBaby, isActive: true }).populate(
+          babyPopulate,
+        )
+      : null;
+
+    const response = formatUserResponse(user, token, [], ["resetToken"]);
+    response.babyInfo = activeBaby ? getBabyInfo(activeBaby) : null;
+    response.hasBaby = !!activeBaby;
+
+    logActivity({
+      user: user._id,
+      userType: user.accountState.userType,
+      action: isNewUser ? "User Signed Up" : "User Logged In",
+      detail: `${user.name} ${isNewUser ? "signed up" : "logged in"} via ${provider}${
+        providerLinked ? " (newly linked)" : ""
+      }`,
+      module: "auth",
+      targetId: user._id,
+      metadata: { provider },
+    });
+
+    return sendResponse({
+      res,
+      statusCode: isNewUser ? 201 : 200,
+      translationKey: isNewUser ? "signup_successful" : "login_success",
+      data: response,
+    });
   } catch (error) {
+    if (session.inTransaction()) await session.abortTransaction();
+    session.endSession();
     return sendResponse({
       res,
       statusCode: 500,
       translationKey: error.message,
-      error: error,
+      error,
     });
   }
 };

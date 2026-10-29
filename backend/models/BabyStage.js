@@ -17,6 +17,11 @@ const babyStageSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // Display order in the app (youngest stage first); set from the admin panel.
+    sortOrder: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true },
 );

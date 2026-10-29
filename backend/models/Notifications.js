@@ -19,13 +19,14 @@ const NotificationSchema = new mongoose.Schema({
     ref: "User",
     default: null,
   },
+  // What the notification is about (e.g. a Baby); empty for system / test notifications.
   objectId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true,
+    default: null,
   },
   objectType: {
     type: String,
-    required: true,
+    default: "System",
   },
   receiverId: {
     type: mongoose.Schema.Types.ObjectId,

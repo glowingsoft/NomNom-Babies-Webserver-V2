@@ -28,6 +28,8 @@ const createSupportRequest = async (req, res) => {
     await supportRequest.save();
 
     void logActivity({
+      user: req.user._id,
+      userType: req.user.userType || "user",
       action: "create",
       detail: `Created support request: ${supportRequest.subject}`,
       module: "support",

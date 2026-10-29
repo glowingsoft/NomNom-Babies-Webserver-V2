@@ -705,6 +705,15 @@ const getEndDate = (pricingPlan, startDate = new Date()) => {
   return null;
 };
 
+/**
+ * Today's date (`YYYY-MM-DD`) in the user's timezone. Feeding slots, logs and timetables are filed under this
+ * key, so a user in Asia/Karachi gets "today" right between 00:00 and 05:00 local time.
+ */
+const getUserToday = (user) => {
+  const tz = user?.timezone && moment.tz.zone(user.timezone) ? user.timezone : "UTC";
+  return moment().tz(tz).format("YYYY-MM-DD");
+};
+
 const fireAndForget = (promise, label) => {
   promise.catch((err) =>
     console.error(`[${label}] failed:`, err)
@@ -732,5 +741,6 @@ module.exports = {
   getCurrentUtcDateOnly,
   convertToUtcDateOnly,
   getEndDate,
+  getUserToday,
   fireAndForget
 };

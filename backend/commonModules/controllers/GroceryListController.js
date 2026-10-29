@@ -1,5 +1,6 @@
 const Baby = require("@models/Baby");
 const GroceryList = require("@models/GroceryList");
+const Cart = require("@models/Cart");
 const Recipe = require("@models/Recipe");
 const { User } = require("@models/UserModel");
 const { babyPopulate } = require("@utils/babyUtil");
@@ -456,6 +457,11 @@ const removeRecipeFromGroceryList = async (req, res) => {
     );
 
     await groceryList.save();
+    // The Cart tab mirrors the grocery list per recipe.
+    await Cart.updateOne(
+      { user: userId, baby: user.activeBaby },
+      { $pull: { recipes: { recipe: recipeId } } },
+    );
 
     void logActivity({
       user: req.user._id,
@@ -604,6 +610,10 @@ const clearGroceryList = async (req, res) => {
       {
         recipes: [],
       },
+    );
+    await Cart.updateOne(
+      { user: userId, baby: user.activeBaby },
+      { $set: { recipes: [] } },
     );
 
     void logActivity({

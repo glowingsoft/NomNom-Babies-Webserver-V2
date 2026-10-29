@@ -7,6 +7,7 @@ const {
   parsePaginationParams,
   generateMeta,
   validateParams,
+  getUserToday,
 } = require("@utils/responseUtil");
 const { getBabyInfo } = require("@utils/babyUtil");
 const { logActivity } = require("@utils/activityUtil");
@@ -43,7 +44,7 @@ const getFeedingTimetable = async (req, res) => {
 
     const { page, limit, skip } = parsePaginationParams(req);
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = getUserToday(req.user);
 
     const query = {
       baby: baby._id,
@@ -52,7 +53,7 @@ const getFeedingTimetable = async (req, res) => {
     };
 
     const [schedules, logs, totalRecords] = await Promise.all([
-      FeedingSchedule.find(query).sort({ time: 1 }).skip(skip).limit(limit),
+      FeedingSchedule.find(query).sort({ timeMinutes: 1, time: 1 }).skip(skip).limit(limit),
 
       FeedingLog.find(query),
 
@@ -149,41 +150,32 @@ const getTimetables = async (req, res) => {
 
     const { page, limit, skip } = parsePaginationParams(req);
 
-    const query = {
-      baby: user.activeBaby._id,
-      user: req.user._id,
-    };
+    // One timetable per day: group the slots by date, newest first, and paginate over days.
+    const [result] = await FeedingSchedule.aggregate([
+      { $match: { baby: user.activeBaby._id, user: user._id } },
+      { $group: { _id: "$date", slots: { $sum: 1 } } },
+      { $sort: { _id: -1 } },
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: limit }],
+          total: [{ $count: "count" }],
+        },
+      },
+    ]);
 
-    const totalRecords = await FeedingSchedule.countDocuments(query);
-
-    const timetables = await FeedingSchedule.find(query)
-      .select("date")
-      .sort({ date: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const grouped = [
-      ...new Map(
-        timetables.map((item) => [
-          item.date,
-          {
-            date: item.date,
-          },
-        ]),
-      ).values(),
-    ];
-
+    const totalRecords = result?.total?.[0]?.count || 0;
     const title = `Feeding Timetable for ${user.activeBaby.name}`;
 
     return sendResponse({
       res,
       statusCode: 200,
       translationKey: "data_fetched_successfully",
-      data: grouped.map((x) => ({
-        title: title,
-        date: x.date,
-        meta: generateMeta(page, limit, totalRecords),
+      data: (result?.data || []).map((day) => ({
+        title,
+        date: day._id,
+        totalSlots: day.slots,
       })),
+      meta: generateMeta(page, limit, totalRecords),
     });
   } catch (error) {
     return sendResponse({
@@ -224,7 +216,7 @@ const getTimetableDetail = async (req, res) => {
       baby: activeBabyId,
       user: req.user._id,
       date,
-    }).sort({ time: 1 });
+    }).sort({ timeMinutes: 1, time: 1 });
 
     const logs = await FeedingLog.find({
       baby: activeBabyId,

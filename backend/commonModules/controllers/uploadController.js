@@ -4,6 +4,9 @@ const mime = require("mime-types");
 const upload = require("../../middlewares/uploadFileMw");
 const { sendResponse } = require("@utils/responseUtil");
 
+// Same folder multer writes to (destination "./uploads/" relative to the process cwd).
+const UPLOAD_DIR = path.join(process.cwd(), "uploads");
+
 const getFileType = (mimeType) => {
   if (mimeType.startsWith("image/")) {
     return "image";
@@ -31,7 +34,8 @@ const uploadFile = (req, res) => {
           translationKey: "no_file",
         });
       } else {
-        const baseUrl = `${process.env.S3_BASE_URL}/`;
+        // Local disk storage: served by GET /api/upload/:filename (S3_BASE_URL only serves S3 objects).
+        const baseUrl = `${req.protocol}://${req.get("host")}/api/upload/`;
 
         sendResponse({
           res,
@@ -50,7 +54,7 @@ const uploadFile = (req, res) => {
 
 const getFileByName = (req, res) => {
   const filename = req.params.filename;
-  const filePath = path.join(__dirname, "../uploads", filename);
+  const filePath = path.join(UPLOAD_DIR, filename);
 
   fs.access(filePath, fs.constants.F_OK, (err) => {
     if (err) {
@@ -68,7 +72,7 @@ const getFileByName = (req, res) => {
 
 const getFileDetails = (req, res) => {
   const filename = req.params.filename;
-  const filePath = path.join(__dirname, "../uploads", filename);
+  const filePath = path.join(UPLOAD_DIR, filename);
 
   fs.access(filePath, fs.constants.F_OK, (err) => {
     if (err) {
@@ -102,7 +106,7 @@ const getFileDetails = (req, res) => {
 };
 
 const getAllFiles = (req, res) => {
-  const directoryPath = path.join(__dirname, "../uploads");
+  const directoryPath = UPLOAD_DIR;
 
   fs.readdir(directoryPath, (err, files) => {
     if (err) {

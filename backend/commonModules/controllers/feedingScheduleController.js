@@ -5,6 +5,7 @@ const {
   validateParams,
   parsePaginationParams,
   generateMeta,
+  getUserToday,
 } = require("@utils/responseUtil");
 const Baby = require("@models/Baby");
 const mongoose = require("mongoose");
@@ -45,7 +46,7 @@ const getFeedingSchedule = async (req, res) => {
       user: req.user._id,
       date,
     })
-      .sort({ time: 1 })
+      .sort({ timeMinutes: 1, time: 1 })
       .skip(skip)
       .limit(limit);
 
@@ -96,13 +97,23 @@ const getFeedingSchedule = async (req, res) => {
 
 const removeScheduleSlot = async (req, res) => {
   try {
+    if (
+      !validateParams(req, res, {
+        pathParams: ["slotId"],
+        objectIdFields: ["slotId"],
+      })
+    )
+      return;
+
     const { slotId } = req.params;
-    const schedule = await FeedingSchedule.findOne({
-      "weekSchedules.slots._id": slotId,
+
+    // Each FeedingSchedule document is one slot; remove it with its completion log.
+    const slot = await FeedingSchedule.findOneAndDelete({
+      _id: slotId,
       user: req.user._id,
     });
 
-    if (!schedule) {
+    if (!slot) {
       return sendResponse({
         res,
         statusCode: 404,
@@ -110,21 +121,18 @@ const removeScheduleSlot = async (req, res) => {
       });
     }
 
-    await FeedingSchedule.updateOne(
-      {
-        user: req.user._id,
-      },
+    await FeedingLog.deleteMany({ slotId: slot._id, user: req.user._id });
 
-      {
-        $pull: {
-          slots: {
-            _id: slotId,
-          },
-        },
-      },
-    );
-
-    await schedule.save();
+    void logActivity({
+      user: req.user._id,
+      userType: req.user.role || "user",
+      action: "delete",
+      detail: `Removed feeding slot ${slot.title}`,
+      module: "feeding_schedule",
+      baby: slot.baby,
+      targetId: slot._id,
+      metadata: { date: slot.date, time: slot.time },
+    });
 
     return sendResponse({
       res,
@@ -146,11 +154,13 @@ const createFeedingSchedule = async (req, res) => {
     if (
       !validateParams(req, res, {
         rawData: ["type", "title", "time", "description"],
+        enumFields: { type: ["milk", "meal"] },
+        dateFields: { date: "YYYY-MM-DD" },
       })
     )
       return;
 
-    const { type, title, time, description } = req.body;
+    const { type, title, time, description, date } = req.body;
 
     const user = await User.findById(req.user._id);
 
@@ -161,7 +171,7 @@ const createFeedingSchedule = async (req, res) => {
         translationKey: "baby_not_found",
       });
     }
-    const today = new Date().toISOString().split("T")[0];
+    const today = date || getUserToday(req.user);
 
     const schedule = await FeedingSchedule.create({
       baby: user.activeBaby,

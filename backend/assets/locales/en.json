@@ -131,5 +131,8 @@
   "invalid_time_format": "Invalid time format for '{field}'. Expected format is {format}.",
   "missing_date_field": "Missing date field: {field}",
   "invalid_enum_value": "Invalid value for '{field}'. Allowed values are: {allowedValues}.",
-  "min_length_violation": "{field} must be at least {minLength} characters long."
+  "min_length_violation": "{field} must be at least {minLength} characters long.",
+  "notification_queued": "Notification queued",
+  "device_registered": "Device registered successfully",
+  "invalid_social_token": "Sign-in could not be verified. Please try again."
 }
