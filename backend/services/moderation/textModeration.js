@@ -33,7 +33,10 @@ function textModerationMiddleware(req, res, next) {
 
   const excludedRoutes = [
     "/api/app/payments/cards",
-    "/api/webhooks"
+    "/api/webhooks",
+    // Admin-written app texts in every language: the English word list misreads foreign words
+    // (e.g. French "aujourd’hui" → "hui").
+    "/api/admin/languages"
   ];
 
   if (excludedRoutes.some(route => req.originalUrl.startsWith(route))) {
