@@ -4,7 +4,8 @@
 //     from every language.
 //   - other languages only gain keys they don't have yet, so translations edited in the admin panel are kept
 //     (pass --force to overwrite them with the files).
-//   - a language is created if missing, and stays inactive until every key is translated.
+//   - a language is created if missing (inactive until every key is translated); live languages stay live
+//     when new keys arrive, showing English for those until they are translated.
 // usage: node backend/scripts/syncAppTranslations.js [--env .env.dev] [--force]
 const path = require("path");
 const fs = require("fs");
@@ -70,10 +71,9 @@ const same = (a = {}, b = {}) => JSON.stringify(a) === JSON.stringify(b);
       continue;
     }
     const set = { translations: next, translationsVersion: (doc.translationsVersion || 0) + 1, updatedAt: new Date() };
-    // Never leave an incomplete language selectable.
-    if (missing && code !== "en" && doc.active) set.active = false;
+    // Live languages stay live; the app shows English for texts that aren't translated yet.
     await languages.updateOne({ _id: doc._id }, { $set: set });
-    console.log(`${code}: updated to v${set.translationsVersion} (${missing} missing${set.active === false ? ", deactivated" : ""})`);
+    console.log(`${code}: updated to v${set.translationsVersion} (${missing} missing)`);
   }
   await mongoose.disconnect();
 })().catch((e) => {

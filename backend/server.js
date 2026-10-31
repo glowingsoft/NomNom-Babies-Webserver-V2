@@ -5,7 +5,6 @@ const {
   accessLogger,
 } = require("../backend/config/logging");
 
-const cors = require("cors");
 
 global.logger = logger;
 
@@ -121,7 +120,7 @@ securityMiddleware(app, {
   rateLimitMax: 1000,
 });
 
-app.use(cors());
+// CORS is applied once, in middlewares/security.js (allowlist from WEB_ORIGINS; native apps send no Origin).
 
 app.use(i18nConfig.init);
 
@@ -132,6 +131,7 @@ if (process.env.NODE_ENV !== "prod") {
 }
 
 app.use(express.json());
+app.use(require("./middlewares/sanitize"));
 app.use(textModerationMiddleware);
 
 const routes = require("./commonModules/routes");
@@ -145,7 +145,10 @@ app.use("/api/admin", adminRoutes);
 app.use("/api", routes);
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
+// API docs describe every endpoint: development only.
+if (process.env.NODE_ENV !== "prod") {
+  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
+}
 
 app.use((req, res) => {
   sendResponse({

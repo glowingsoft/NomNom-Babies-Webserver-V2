@@ -141,5 +141,16 @@
   "translations_fetched": "Translations fetched successfully",
   "translations_updated": "Translations updated successfully",
   "translations_incomplete": "Translate all {missing} missing app texts before activating this language.",
-  "base_language_required": "Add the English app texts first."
+  "base_language_required": "Add the English app texts first.",
+  "token_expired": "Your session token has expired. Please refresh it.",
+  "session_expired": "Your session has expired. Please log in again.",
+  "session_revoked": "For your security you have been signed out. Please log in again.",
+  "refresh_in_progress": "Your session is being refreshed. Please try again.",
+  "refresh_token_missing": "Refresh token is required",
+  "invalid_refresh_token": "Invalid refresh token",
+  "token_refreshed": "Session refreshed",
+  "invalid_credentials": "Incorrect email or password",
+  "unauthorized_admin_login": "This account cannot sign in to the admin panel",
+  "weak_password": "Password must be at least 8 characters and include a letter and a number",
+  "invalid_data": "Invalid data"
 }

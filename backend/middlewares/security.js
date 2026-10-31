@@ -4,7 +4,7 @@ const hpp = require("hpp");
 const cors = require("cors");
 const compression = require("compression");
 const express = require("express");
-const { isDev, connectSrc } = require("@config/origins");
+const { isDev, connectSrc, isAllowedOrigin } = require("@config/origins");
 const securityMiddleware = (app, options = {}) => {
   const {
     allowedOrigins = [],
@@ -52,22 +52,13 @@ const securityMiddleware = (app, options = {}) => {
   app.use(express.urlencoded({ extended: true, limit: maxRequestSize }));
 
   const corsOptions = {
+    // Unknown origins get no CORS headers, so browsers block the response (and never send cookies).
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-
-      if (isDev) {
-        return callback(null, true);
-      }
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      return callback(new Error("CORS Forbidden"), false);
+      callback(null, isAllowedOrigin(origin));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-admin-access-token"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-admin-access-token", "Accept-Language", "X-Client"],
   };
 
   app.use(cors(corsOptions));

@@ -258,7 +258,7 @@
   "parent_caregiver_name": "माता-पिता / देखभालकर्ता का नाम",
   "password": "पासवर्ड",
   "password_is_required": "पासवर्ड आवश्यक है",
-  "password_must_be_at_least_6_characters": "पासवर्ड कम से कम 6 अक्षरों का होना चाहिए",
+  "password_must_be_at_least_8_characters_and_inclu": "पासवर्ड कम से कम 8 अक्षरों का हो और उसमें एक अक्षर व एक अंक हो",
   "password_reset_successfully": "पासवर्ड सफलतापूर्वक रीसेट हुआ।",
   "passwords_do_not_match": "पासवर्ड मेल नहीं खाते",
   "phone_number": "फ़ोन नंबर",

@@ -1,7 +1,10 @@
 const fs = require("fs");
 const path = require("path");
 
-const LOG_ROOT = path.resolve(__dirname, "../../logs");
+// Release deploys (deploy/release.sh) set APP_ROOT to the `current` symlink, so a pm2 reload picks up the
+// newly switched release; locally it is the repository root.
+const APP_ROOT = process.env.APP_ROOT || path.resolve(__dirname, "../..");
+const LOG_ROOT = path.join(APP_ROOT, "logs");
 const PM2_LOG_DIR = path.join(LOG_ROOT, "pm2");
 
 if (!fs.existsSync(LOG_ROOT)) {
@@ -17,7 +20,7 @@ module.exports = {
     {
       name: process.env.PM2_APP_NAME || "backend-server",
       script: "backend/server.js",
-      cwd: path.resolve(__dirname, "../.."),
+      cwd: APP_ROOT,
 
       exec_mode: "cluster",
       instances: process.env.PM2_INSTANCES || 1,

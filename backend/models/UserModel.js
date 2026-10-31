@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 const moment = require("moment-timezone");
 const validator = require("validator");
 const { randomBytes } = require("crypto");
@@ -298,11 +297,7 @@ userSchema.pre("save", async function (next) {
   next();
 });
 
-userSchema.methods.generateAuthToken = function () {
-  const user = this;
-  const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET);
-  return token;
-};
+// Sign-in tokens come from helperUtils/authTokens.js (startSession): short-lived access + rotating refresh.
 
 userSchema.statics.findByCredentials = async (email, password) => {
   const normalizedEmail = String(email || "")

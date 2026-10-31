@@ -258,7 +258,7 @@
   "parent_caregiver_name": "Parent / Caregiver Name",
   "password": "Password",
   "password_is_required": "Password is required",
-  "password_must_be_at_least_6_characters": "Password must be at least 6 characters",
+  "password_must_be_at_least_8_characters_and_inclu": "Password must be at least 8 characters and include a letter and a number",
   "password_reset_successfully": "Password reset successfully.",
   "passwords_do_not_match": "Passwords do not match",
   "phone_number": "Phone Number",

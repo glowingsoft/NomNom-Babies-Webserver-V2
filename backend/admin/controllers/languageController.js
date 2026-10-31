@@ -13,7 +13,6 @@ const {
   BASE_LANGUAGE,
   getBaseTranslations,
   missingTranslationKeys,
-  cleanTranslations,
 } = require("@utils/translationUtil");
 
 const createLanguage = async (req, res) => {
@@ -308,39 +307,39 @@ const deleteLanguage = async (req, res) => {
   }
 };
 
-// GET /admin/languages/:id/translations — the English texts (keys) next to this language's translations.
-const getLanguageTranslations = async (req, res) => {
-  if (!validateParams(req, res, { pathParams: ["id"], objectIdFields: ["id"] }))
-    return;
+// GET /admin/languages/translations — every app text key with one column per language (central editor).
+const getAllTranslations = async (req, res) => {
   try {
-    const language = await Language.findById(req.params.id)
+    const languages = await Language.find({})
       .select("+translations")
+      .sort({ code: 1 })
       .lean();
-    if (!language) {
-      return sendResponse({
-        res,
-        statusCode: 404,
-        translationKey: "language_not_found",
-      });
-    }
-    const base = await getBaseTranslations();
-    const translations = language.translations || {};
+    const base = languages.find((l) => l.code === BASE_LANGUAGE);
+    const keys = Object.keys(base?.translations || {}).sort();
+    // English first, then the rest alphabetically.
+    languages.sort((a, b) =>
+      a.code === BASE_LANGUAGE ? -1 : b.code === BASE_LANGUAGE ? 1 : 0,
+    );
     return sendResponse({
       res,
       statusCode: 200,
       translationKey: "translations_fetched",
       data: {
-        language: {
-          _id: language._id,
-          title: language.title,
-          code: language.code,
-          active: language.active,
-        },
-        isBase: language.code === BASE_LANGUAGE,
-        base,
-        translations,
-        missing: missingTranslationKeys(translations, base),
-        version: language.translationsVersion || 0,
+        languages: languages.map((l) => ({
+          _id: l._id,
+          code: l.code,
+          title: l.title,
+          active: l.active,
+          version: l.translationsVersion || 0,
+          missing: missingTranslationKeys(l.translations, base?.translations)
+            .length,
+        })),
+        rows: keys.map((key) => ({
+          key,
+          values: Object.fromEntries(
+            languages.map((l) => [l.code, l.translations?.[key] || ""]),
+          ),
+        })),
       },
     });
   } catch (error) {
@@ -353,71 +352,75 @@ const getLanguageTranslations = async (req, res) => {
   }
 };
 
-// PUT /admin/languages/:id/translations { translations: { key: text } } — replaces the texts, bumps the version.
-const updateLanguageTranslations = async (req, res) => {
-  if (
-    !validateParams(req, res, {
-      pathParams: ["id"],
-      objectIdFields: ["id"],
-      rawData: ["translations"],
-    })
-  )
-    return;
+// PUT /admin/languages/translations { rows: [{ key, values: { en, fr, … } }], removeKeys?: [key] }
+// Upserts texts for any keys/languages (a new key needs its English text) and removes keys from every
+// language. Only languages whose texts changed get a new version. Live languages stay live: the app shows
+// English for any text that isn't translated yet.
+const saveAllTranslations = async (req, res) => {
+  if (!validateParams(req, res, { rawData: ["rows"] })) return;
   try {
-    const language = await Language.findById(req.params.id).select(
-      "+translations",
-    );
-    if (!language) {
-      return sendResponse({
-        res,
-        statusCode: 404,
-        translationKey: "language_not_found",
-      });
+    const { rows = [], removeKeys = [] } = req.body;
+    if (!Array.isArray(rows) || !Array.isArray(removeKeys)) {
+      return sendResponse({ res, statusCode: 400, translationKey: "invalid_data" });
     }
-    const isBase = language.code === BASE_LANGUAGE;
-    const base = isBase ? {} : await getBaseTranslations();
-    const translations = cleanTranslations(
-      req.body.translations,
-      base,
-      isBase,
-    );
-    const missing = isBase ? [] : missingTranslationKeys(translations, base);
-    // An active language must stay complete, or users would see a mix of languages.
-    if (language.active && !isBase && missing.length) {
+    const languages = await Language.find({}).select("+translations");
+    const base = languages.find((l) => l.code === BASE_LANGUAGE);
+    if (!base) {
       return sendResponse({
         res,
         statusCode: 400,
-        translationKey: "translations_incomplete",
-        values: { missing: missing.length },
+        translationKey: "base_language_required",
       });
     }
-    language.translations = translations;
-    language.translationsVersion = (language.translationsVersion || 0) + 1;
-    language.markModified("translations");
-    await language.save();
+    const KEY = /^[a-z0-9_]{1,64}$/;
+    const changed = new Set();
+    const baseTexts = { ...(base.translations || {}) };
+    for (const row of rows) {
+      const key = String(row?.key || "").trim();
+      if (!KEY.test(key)) continue;
+      const en = row.values?.[BASE_LANGUAGE];
+      if (typeof en === "string" && en.trim()) baseTexts[key] = en.trim().slice(0, 2000);
+    }
+    for (const key of removeKeys) delete baseTexts[key];
+
+    for (const lang of languages) {
+      const isBase = lang.code === BASE_LANGUAGE;
+      const next = isBase ? baseTexts : { ...(lang.translations || {}) };
+      if (!isBase) {
+        for (const row of rows) {
+          const key = String(row?.key || "").trim();
+          const text = row.values?.[lang.code];
+          if (!(key in baseTexts) || typeof text !== "string") continue;
+          if (text.trim()) next[key] = text.trim().slice(0, 2000);
+          else delete next[key];
+        }
+        // Keys no longer in English are dropped everywhere.
+        for (const key of Object.keys(next)) if (!(key in baseTexts)) delete next[key];
+      }
+      if (JSON.stringify(next) === JSON.stringify(lang.translations || {})) continue;
+      lang.translations = next;
+      lang.translationsVersion = (lang.translationsVersion || 0) + 1;
+      lang.markModified("translations");
+      changed.add(lang.code);
+    }
+    await Promise.all(
+      languages.filter((l) => changed.has(l.code)).map((l) => l.save()),
+    );
 
     void logActivity({
       user: req.user._id,
       userType: req.user.userType || req.user.accountState?.userType,
-      action: "Language Translations Updated",
-      detail: `Updated ${language.title} app texts`,
+      action: "App Texts Updated",
+      detail: `Updated app texts (${[...changed].join(", ") || "no changes"})`,
       module: "language",
-      targetId: language._id,
-      metadata: {
-        code: language.code,
-        version: language.translationsVersion,
-        missing: missing.length,
-      },
+      metadata: { rows: rows.length, removed: removeKeys.length, languages: [...changed] },
     });
 
     return sendResponse({
       res,
       statusCode: 200,
       translationKey: "translations_updated",
-      data: {
-        version: language.translationsVersion,
-        missing,
-      },
+      data: { changed: [...changed] },
     });
   } catch (error) {
     return sendResponse({
@@ -430,10 +433,10 @@ const updateLanguageTranslations = async (req, res) => {
 };
 
 module.exports = {
+  getAllTranslations,
+  saveAllTranslations,
   createLanguage,
   getLanguages,
   updateLanguage,
   deleteLanguage,
-  getLanguageTranslations,
-  updateLanguageTranslations,
 };

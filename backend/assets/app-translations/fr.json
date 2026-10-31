@@ -258,7 +258,7 @@
   "parent_caregiver_name": "Nom du parent / de l’aidant",
   "password": "Mot de passe",
   "password_is_required": "Le mot de passe est requis",
-  "password_must_be_at_least_6_characters": "Le mot de passe doit contenir au moins 6 caractères",
+  "password_must_be_at_least_8_characters_and_inclu": "Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre",
   "password_reset_successfully": "Mot de passe réinitialisé avec succès.",
   "passwords_do_not_match": "Les mots de passe ne correspondent pas",
   "phone_number": "Numéro de téléphone",

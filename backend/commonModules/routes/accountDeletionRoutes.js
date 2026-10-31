@@ -8,7 +8,7 @@ const {
 
 // Public (no sign-in): used by the website's /delete-account page.
 const router = express.Router();
-const limiter = createRateLimiter("accountDeletion", 15, 10);
+const limiter = createRateLimiter("accountDeletion", 15, 10, { strict: true });
 
 router.post("/request", limiter, requestDeletion);
 router.post("/verify", limiter, verifyDeletion);

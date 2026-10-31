@@ -1,6 +1,12 @@
 name: CI/CD for Dev Environment
 
 on:
+  workflow_dispatch:
+    inputs:
+      rollback:
+        description: "Roll back to the previous release instead of deploying"
+        type: boolean
+        default: false
   push:
     branches:
       - dev # Run the workflow on every commit to the 'dev' branch
@@ -13,6 +19,7 @@ env:
   DEPLOY_DIR: backend-dev
   PM2_APP_NAME: backend-server-dev
   PM2_ENV: dev
+  PORT: 4001
 
 jobs:
   deploy:
@@ -73,11 +80,17 @@ jobs:
             pm2 -v
           '
 
-      - name: Sync files to EC2
+      # Each deploy goes into its own releases/<id> folder; server-only files live in shared/ and are never
+      # touched by a deploy. deploy/release.sh links them in, installs, switches `current` and reloads pm2.
+      - name: Upload release
+        if: ${{ !inputs.rollback }}
         run: |
-          ssh ec2 "mkdir -p ~/$DEPLOY_DIR"
-          # Excluded paths live only on the server and are never deleted
-          rsync -az --delete \
+          RELEASE="$(date -u +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
+          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
+          ssh ec2 "mkdir -p ~/$DEPLOY_DIR/releases/$RELEASE ~/$DEPLOY_DIR/shared"
+          # Unchanged files are hard-linked from the live release, so only changes are transferred.
+          rsync -az \
+            --link-dest="../../current/" \
             --exclude '.git/' \
             --exclude '.github/' \
             --exclude 'node_modules/' \
@@ -85,27 +98,25 @@ jobs:
             --exclude 'logs/' \
             --exclude 'uploads*' \
             --exclude 'backend/secretAssets/' \
-            ./ ec2:~/$DEPLOY_DIR/
+            --exclude 'secrets/' \
+            ./ ec2:~/$DEPLOY_DIR/releases/$RELEASE/
 
       - name: Upload env file
+        if: ${{ !inputs.rollback }}
         env:
           ENV_FILE: ${{ secrets.ENV_DEV }}
         run: |
-          # Optional: if the secret is not set, the existing file on the server is kept
+          # Optional: if the secret is not set, the env file already on the server is kept
           if [ -n "$ENV_FILE" ]; then
-            printf '%s\n' "$ENV_FILE" | ssh ec2 "umask 077 && cat > ~/$DEPLOY_DIR/.env.$PM2_ENV"
+            printf '%s\n' "$ENV_FILE" | ssh ec2 "umask 077 && cat > ~/$DEPLOY_DIR/shared/.env.$PM2_ENV"
           fi
 
-      - name: Install dependencies
+      - name: Activate release
+        if: ${{ !inputs.rollback }}
         run: |
-          ssh ec2 "cd ~/$DEPLOY_DIR && npm ci --omit=dev"
+          ssh ec2 "bash ~/$DEPLOY_DIR/releases/$RELEASE/deploy/release.sh activate \$HOME/$DEPLOY_DIR $RELEASE $PM2_ENV $PM2_APP_NAME $PORT && pm2 list"
 
-      - name: Start or Reload PM2 Service
+      - name: Roll back to the previous release
+        if: ${{ inputs.rollback }}
         run: |
-          ssh ec2 "
-            set -e
-            cd ~/$DEPLOY_DIR
-            PM2_APP_NAME=$PM2_APP_NAME pm2 startOrReload backend/config/ecosystem.config.js --env $PM2_ENV --update-env
-            pm2 save
-            pm2 list
-          "
+          ssh ec2 "bash ~/$DEPLOY_DIR/current/deploy/release.sh rollback \$HOME/$DEPLOY_DIR $PM2_ENV $PM2_APP_NAME $PORT && pm2 list"

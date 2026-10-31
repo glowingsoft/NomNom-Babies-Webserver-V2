@@ -1,6 +1,7 @@
 const { User } = require("@models/UserModel");
 const { Devices } = require("@models/Devices");
 const { userCache } = require("@config/nodeCache");
+const { revokeUserSessions } = require("@utils/authTokens");
 
 const DELETED_STATUS = "softDeleted";
 
@@ -48,6 +49,8 @@ const hardDeleteUserById = async (userId) => {
   await Devices.updateOne({ userId }, { $set: { devices: [] } });
   userCache.del(String(userId));
 
+  // Signs the account out everywhere.
+  await revokeUserSessions(userId, { reason: "account_deleted" });
   return { alreadyDeleted: false };
 };
 

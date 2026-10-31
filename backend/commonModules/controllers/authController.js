@@ -15,6 +15,21 @@ const { babyPopulate, getBabyInfo } = require("@utils/babyUtil");
 const { logActivity } = require("@utils/activityUtil");
 const { hardDeleteUserById, DELETED_STATUS } = require("@utils/hardDeleteUser");
 const { userCache } = require("@config/nodeCache");
+// New passwords: 8–128 characters with at least one letter and one number (login accepts older ones).
+const isStrongPassword = (pw) =>
+  typeof pw === "string" &&
+  pw.length >= 8 &&
+  pw.length <= 128 &&
+  /[A-Za-z]/.test(pw) &&
+  /\d/.test(pw);
+
+const {
+  startSession,
+  rotateRefreshToken,
+  revokeFamily,
+  revokeUserSessions,
+  clearRefreshCookie,
+} = require("@utils/authTokens");
 
 /**
  * Echoes the OTP in the response for development / QA builds only, so testers don't need the inbox.
@@ -100,6 +115,10 @@ const register = async (req, res) => {
       });
     }
 
+    if (!isStrongPassword(password)) {
+      return sendResponse({ res, statusCode: 400, translationKey: "weak_password" });
+    }
+
     const normalizedEmail = String(email).trim().toLowerCase();
     const assignedRole = isAdminSignup ? "admin" : "user";
     const existingUser = await User.findOne({
@@ -149,7 +168,7 @@ const register = async (req, res) => {
           await createOrSkipDevice(existingUser._id, deviceId, deviceType);
         }
 
-        const token = existingUser.generateAuthToken();
+        const token = await startSession(existingUser, req, res);
 
         const response = await getFormattedUserResponse(existingUser, token);
 
@@ -204,7 +223,7 @@ const register = async (req, res) => {
       await createOrSkipDevice(user._id, deviceId, deviceType);
     }
 
-    const token = user.generateAuthToken();
+    const token = await startSession(user, req, res);
     const response = await getFormattedUserResponse(user, token);
 
     logActivity({
@@ -260,25 +279,33 @@ const login = async (req, res) => {
     if (!validateParams(req, res, validationOptions)) {
       return;
     }
+    // Credentials must be plain strings (blocks {"$gt": ""}-style operator injection).
+    if (typeof email !== "string" || typeof password !== "string") {
+      return sendResponse({
+        res,
+        statusCode: 400,
+        translationKey: "invalid_credentials",
+      });
+    }
 
     const user = await User.findByCredentials(email, password);
 
+    // Same answer for an unknown email and a wrong password, so login can't be used to find accounts.
     if (user.error) {
-      if (user.error === "user_not_found") {
-        return sendResponse({
-          res,
-          statusCode: 404,
-          translationKey: "user_not_found",
-        });
-      }
+      return sendResponse({
+        res,
+        statusCode: 401,
+        translationKey: "invalid_credentials",
+      });
+    }
 
-      if (user.error === "incorrect_password") {
-        return sendResponse({
-          res,
-          statusCode: 401,
-          translationKey: "incorrect_password",
-        });
-      }
+    // The admin panel signs in with userType "admin": only admin accounts may.
+    if (req.body.userType === "admin" && user.accountState?.userType !== "admin") {
+      return sendResponse({
+        res,
+        statusCode: 403,
+        translationKey: "unauthorized_admin_login",
+      });
     }
 
     if (
@@ -331,7 +358,7 @@ const login = async (req, res) => {
       await user.save();
     }
 
-    const token = user.generateAuthToken();
+    const token = await startSession(user, req, res);
 
     let activeBaby = null;
 
@@ -567,7 +594,7 @@ const verifyOtp = async (req, res) => {
 
     const updatedUser = await User.findById(user._id);
 
-    const token = user.generateAuthToken();
+    const token = await startSession(user, req, res);
 
     const response = formatUserResponse(updatedUser, token);
 
@@ -675,6 +702,12 @@ const resetPassword = async (req, res) => {
     if (!validateParams(req, res, validationOptions)) {
       return;
     }
+    if (typeof email !== "string" || typeof resetToken !== "string" || !resetToken) {
+      return sendResponse({ res, statusCode: 400, translationKey: "invalid_data" });
+    }
+    if (!isStrongPassword(newPassword)) {
+      return sendResponse({ res, statusCode: 400, translationKey: "weak_password" });
+    }
 
     const user = await User.findOne({
       email: email.trim().toLowerCase(),
@@ -697,9 +730,11 @@ const resetPassword = async (req, res) => {
 
     await user.save();
 
+    // A password reset signs out every device; this request starts a fresh sign-in.
+    await revokeUserSessions(user._id, { reason: "password_reset" });
     const [updatedUser, token] = await Promise.all([
       User.findById(user._id),
-      user.generateAuthToken(),
+      startSession(user, req, res),
     ]);
 
     const response = formatUserResponse(updatedUser, token);
@@ -740,6 +775,9 @@ const logout = async (req, res) => {
         { $pull: { devices: { deviceId: deviceId } } },
       );
     }
+    // Ends this sign-in: its access token stops working and its refresh token can't be swapped any more.
+    await revokeFamily(req.sessionId, "logout");
+    clearRefreshCookie(res);
 
     return sendResponse({
       res,
@@ -930,7 +968,7 @@ const socialAuth = async (req, res) => {
       await createOrSkipDevice(user._id, deviceId, deviceType);
     }
 
-    const token = user.generateAuthToken();
+    const token = await startSession(user, req, res);
     const activeBaby = user.activeBaby
       ? await Baby.findOne({ _id: user.activeBaby, isActive: true }).populate(
           babyPopulate,
@@ -978,12 +1016,12 @@ const changePassword = async (req, res) => {
     if (
       !validateParams(req, res, {
         rawData: ["currentPassword", "newPassword"],
-        minLengthFields: {
-          newPassword: 6,
-        },
       })
     )
       return;
+    if (typeof currentPassword !== "string" || !isStrongPassword(newPassword)) {
+      return sendResponse({ res, statusCode: 400, translationKey: "weak_password" });
+    }
 
     const user = await User.findById(req.user._id);
 
@@ -1021,6 +1059,11 @@ const changePassword = async (req, res) => {
     user.password = newPassword;
 
     await user.save();
+    // Other devices must sign in again with the new password; this one stays signed in.
+    await revokeUserSessions(user._id, {
+      except: req.sessionId,
+      reason: "password_changed",
+    });
 
     logActivity({
       user: user._id,
@@ -1046,7 +1089,53 @@ const changePassword = async (req, res) => {
   }
 };
 
+// POST /api/auth/refresh { refreshToken } (apps) or the httpOnly cookie (web) → new access + refresh token.
+const refresh = async (req, res) => {
+  try {
+    const result = await rotateRefreshToken(req, res, {
+      loadUser: async (id) => {
+        const user = await User.findById(id).select("accountState");
+        const status = user?.accountState?.status || "active";
+        return user && !["restricted", "suspended", "softDeleted", "hardDeleted"].includes(status)
+          ? user
+          : null;
+      },
+      // A refresh token was used twice: someone copied it. That sign-in is now revoked everywhere.
+      onReuse: (row) =>
+        logActivity({
+          user: row.user,
+          userType: "user",
+          action: "Security Alert",
+          detail: "A reused refresh token was detected; the sign-in was revoked",
+          module: "auth",
+          metadata: { ip: req.ip, deviceId: row.deviceId, userAgent: req.get("user-agent") },
+        }),
+    });
+    if (result.error) {
+      if (result.error.status === 401) clearRefreshCookie(res);
+      return sendResponse({
+        res,
+        statusCode: result.error.status,
+        translationKey: result.error.key,
+      });
+    }
+    return sendResponse({
+      res,
+      statusCode: 200,
+      translationKey: "token_refreshed",
+      data: { token: result.accessToken },
+    });
+  } catch (error) {
+    return sendResponse({
+      res,
+      statusCode: 500,
+      translationKey: "internal_server",
+    });
+  }
+};
+
 module.exports = {
+  refresh,
   register,
   login,
   getMe,

@@ -1,4 +1,4 @@
-const jwt = require("jsonwebtoken");
+const { verifyAccessToken, isSessionActive } = require("@utils/authTokens");
 const { User } = require("@models/UserModel");
 const { sendResponse } = require("@utils/responseUtil");
 const { i18nConfig } = require("@config/i18nConfig");
@@ -25,7 +25,7 @@ const auth = async (req, res, next) => {
       });
     }
 
-    const token = authHeader.replace("Bearer ", "");
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
     if (!token) {
       return sendResponse({
         res,
@@ -34,7 +34,15 @@ const auth = async (req, res, next) => {
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Only short-lived access tokens of a live sign-in (logout / password change / theft detection revoke it).
+    const decoded = verifyAccessToken(token);
+    if (!(await isSessionActive(decoded.sid))) {
+      return sendResponse({
+        res,
+        statusCode: 401,
+        translationKey: "session_expired",
+      });
+    }
     const userId = decoded._id;
 
     let user = userCache.get(userId);
@@ -84,15 +92,17 @@ const auth = async (req, res, next) => {
 
     i18nConfig.setLocale(req, user.language || "en");
     req.token = token;
+    req.sessionId = decoded.sid;
     req.user = user;
 
     next();
   } catch (error) {
+    // "token_expired" tells clients to refresh silently; anything else is a bad token.
     return sendResponse({
       res,
       statusCode: 401,
-      translationKey: "invalid_token",
-      error: error,
+      translationKey:
+        error?.name === "TokenExpiredError" ? "token_expired" : "invalid_token",
     });
   }
 };

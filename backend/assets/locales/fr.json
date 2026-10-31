@@ -141,5 +141,16 @@
   "translations_fetched": "Traductions récupérées avec succès",
   "translations_updated": "Traductions mises à jour avec succès",
   "translations_incomplete": "Traduisez les {missing} textes manquants de l’app avant d’activer cette langue.",
-  "base_language_required": "Ajoutez d’abord les textes anglais de l’app."
+  "base_language_required": "Ajoutez d’abord les textes anglais de l’app.",
+  "token_expired": "Votre jeton de session a expiré. Veuillez l’actualiser.",
+  "session_expired": "Votre session a expiré. Veuillez vous reconnecter.",
+  "session_revoked": "Pour votre sécurité, vous avez été déconnecté. Veuillez vous reconnecter.",
+  "refresh_in_progress": "Votre session est en cours d’actualisation. Veuillez réessayer.",
+  "refresh_token_missing": "Le jeton d’actualisation est requis",
+  "invalid_refresh_token": "Jeton d’actualisation invalide",
+  "token_refreshed": "Session actualisée",
+  "invalid_credentials": "E-mail ou mot de passe incorrect",
+  "unauthorized_admin_login": "Ce compte ne peut pas se connecter au panneau d’administration",
+  "weak_password": "Le mot de passe doit contenir au moins 8 caractères, dont une lettre et un chiffre",
+  "invalid_data": "Données invalides"
 }

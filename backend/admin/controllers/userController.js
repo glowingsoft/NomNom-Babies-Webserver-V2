@@ -10,6 +10,7 @@ const {
 const { formatUserResponse } = require("@utils/userResponseUtil");
 const validator = require("validator");
 const { userCache } = require("@config/nodeCache");
+const { revokeUserSessions } = require("@utils/authTokens");
 const fs = require("fs");
 const path = require("path");
 const Baby = require("@models/Baby");
@@ -478,6 +479,10 @@ const updateUserStatus = async (req, res) => {
     }
 
     await user.save();
+    // Blocking takes effect immediately: every sign-in of the account ends.
+    if (["restricted", "suspended", "softDeleted", "hardDeleted"].includes(status)) {
+      await revokeUserSessions(user._id, { reason: `account_${status}` });
+    }
     userCache.del(String(user._id));
 
     return sendResponse({
@@ -638,6 +643,9 @@ const reportUser = async (req, res) => {
     }
 
     await userToReport.save();
+    if (userToReport.accountState.status === "suspended") {
+      await revokeUserSessions(userToReport._id, { reason: "account_suspended" });
+    }
 
     return sendResponse({
       res,
