@@ -107,10 +107,10 @@ activate)
   REL="$ROOT/releases/$RELEASE"
   [ -d "$REL" ] || { echo "Release $REL not found"; exit 1; }
 
-  # Server-only files must already be in shared/ (the workflow uploads .env.<env> from GitHub secrets;
-  # secrets/ such as the Firebase service account are copied there once by hand).
+  # Server-only files live in shared/ and are managed on the server only (deploys never write them):
+  # .env.<env>, plus secrets/ such as the Firebase service account.
   if [ ! -f "$SHARED/.env.$PM2_ENV" ]; then
-    echo "✕ $SHARED/.env.$PM2_ENV is missing — set the ENV_$(echo "$PM2_ENV" | tr "[:lower:]" "[:upper:]") GitHub secret or create the file on the server"
+    echo "✕ $SHARED/.env.$PM2_ENV is missing — create it on the server (it is never uploaded by deploys)"
     rm -rf "$REL"
     exit 1
   fi

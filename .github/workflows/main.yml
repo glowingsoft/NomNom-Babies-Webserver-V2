@@ -80,8 +80,8 @@ jobs:
             pm2 -v
           '
 
-      # Each deploy goes into its own releases/<id> folder; server-only files live in shared/ and are never
-      # touched by a deploy. deploy/release.sh links them in, installs, switches `current` and reloads pm2.
+      # Each deploy goes into its own releases/<id> folder; server-only files (including the env file) live in
+      # shared/ on the server and are never touched by a deploy. deploy/release.sh links them in, installs, switches `current` and reloads pm2.
       - name: Upload release
         if: ${{ !inputs.rollback }}
         run: |
@@ -100,16 +100,6 @@ jobs:
             --exclude 'backend/secretAssets/' \
             --exclude 'secrets/' \
             ./ ec2:~/$DEPLOY_DIR/releases/$RELEASE/
-
-      - name: Upload env file
-        if: ${{ !inputs.rollback }}
-        env:
-          ENV_FILE: ${{ secrets.ENV_PROD }}
-        run: |
-          # Optional: if the secret is not set, the env file already on the server is kept
-          if [ -n "$ENV_FILE" ]; then
-            printf '%s\n' "$ENV_FILE" | ssh ec2 "umask 077 && cat > ~/$DEPLOY_DIR/shared/.env.$PM2_ENV"
-          fi
 
       - name: Activate release
         if: ${{ !inputs.rollback }}
