@@ -73,6 +73,7 @@ const recipeSchema = new mongoose.Schema(
     method: [
       {
         step: { type: Number, required: true },
+        title: { type: String, default: "", trim: true },
         instruction: { type: String, required: true },
       },
     ],

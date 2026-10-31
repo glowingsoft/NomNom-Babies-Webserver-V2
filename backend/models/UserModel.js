@@ -60,6 +60,13 @@ const userSchema = new mongoose.Schema(
         message: "email_invalid",
       },
     },
+    // Pending web account-deletion request (controllers/accountDeletionController.js).
+    deletionRequest: {
+      requestId: { type: String },
+      otpHash: { type: String },
+      expiresAt: { type: Date },
+      attempts: { type: Number, default: 0 },
+    },
     // Set when the account is deleted (helperUtils/hardDeleteUser.js); the live fields are cleared.
     deletionMeta: {
       deletedAt: { type: Date },

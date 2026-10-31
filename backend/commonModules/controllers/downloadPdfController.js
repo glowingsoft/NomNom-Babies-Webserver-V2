@@ -121,7 +121,7 @@ const downloadFeedingTimeTablePdf = async (req, res) => {
 
     const relativePath = await savePdf(pdf, `feeding-${baby._id}-${today}.pdf`);
 
-    const pdfUrl = `${req.protocol}://${req.get("host")}${relativePath}`;
+    const pdfUrl = `${req.protocol}://${req.get("host")}/api${relativePath}`;
 
     void logActivity({
       user: req.user._id,
@@ -241,7 +241,7 @@ const downloadRecipePdf = async (req, res) => {
 
       instructions: recipe.method.map((step) => ({
         step: step.step,
-
+        title: step.title || "",
         description: step.instruction,
       })),
 
@@ -260,7 +260,7 @@ const downloadRecipePdf = async (req, res) => {
 
     const relativePath = await savePdf(pdf, filename);
 
-    const pdfUrl = `${req.protocol}://${req.get("host")}${relativePath}`;
+    const pdfUrl = `${req.protocol}://${req.get("host")}/api${relativePath}`;
 
     void logActivity({
       user: req.user._id,
@@ -377,7 +377,7 @@ const downloadGroceryPdf = async (req, res) => {
 
     const relativePath = await savePdf(pdf, `grocery-${req.user._id}.pdf`);
 
-    const pdfUrl = `${req.protocol}://${req.get("host")}${relativePath}`;
+    const pdfUrl = `${req.protocol}://${req.get("host")}/api${relativePath}`;
 
     void logActivity({
       user: req.user._id,
@@ -600,7 +600,7 @@ const getDownloadedPdfs = async (req, res) => {
       ...row,
       typeLabel: typeLabels[row.type] || row.type,
       pdfUrl: row.pdfPath
-        ? `${req.protocol}://${req.get("host")}${row.pdfPath}`
+        ? `${req.protocol}://${req.get("host")}/api${row.pdfPath}`
         : null,
     }));
 

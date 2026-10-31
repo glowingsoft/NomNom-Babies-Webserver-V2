@@ -138,6 +138,8 @@ const routes = require("./commonModules/routes");
 const adminRoutes = require("./admin/routes");
 const appRoutes = require("./app/routes");
 
+// Generated PDFs are linked under /api so they reach this server behind the website's reverse proxy.
+app.use("/api/uploads", express.static(path.join(process.cwd(), "uploads")));
 app.use("/api/app", appRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api", routes);

@@ -17,6 +17,8 @@ const getBabyInfo = (baby) => {
 
     name: baby.name,
 
+    parentName: baby.parentName || "",
+
     profileIcon: baby.profileIcon || "",
 
     stage: baby.babyStage

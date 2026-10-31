@@ -4,12 +4,12 @@ const {
 } = require("../controllers/supportController");
 const createRateLimiter = require("@utils/rateLimiter");
 
-const auth = require("@middlewares/authMiddleware");
+const optionalAuth = require("@middlewares/optionalAuth");
 
 const router = express.Router();
 const supportRateLimiter = createRateLimiter("support", 10, 5);
 
-// Signed-in users only, so each request is tied to an account (and logged as its activity).
-router.post("/", supportRateLimiter, auth, createSupportRequest);
+// App users send their token (request is linked to the account); the website contact form posts anonymously.
+router.post("/", supportRateLimiter, optionalAuth, createSupportRequest);
 
 module.exports = router;

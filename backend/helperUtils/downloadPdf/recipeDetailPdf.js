@@ -91,7 +91,12 @@ const generateRecipePdf = async (recipe) => {
           .fillColor(DARK)
           .fontSize(FONT_SIZES.body + 1)
           .font("Helvetica")
-          .text(step.description || "", 80, y, { width: 430 });
+          .text(
+            step.title ? `${step.title}: ${step.description || ""}` : step.description || "",
+            80,
+            y,
+            { width: 430 },
+          );
 
         doc.moveDown(0.7);
       });

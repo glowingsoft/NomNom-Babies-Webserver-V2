@@ -19,7 +19,8 @@
     "pm2:status": "pm2 status",
     "pm2:save": "pm2 save",
     "pm2:startup": "pm2 startup",
-    "update:alias": "node aliasConfig/update-aliases.js"
+    "update:alias": "node aliasConfig/update-aliases.js",
+    "i18n:sync": "node backend/scripts/syncAppTranslations.js"
   },
   "keywords": [],
   "author": "",

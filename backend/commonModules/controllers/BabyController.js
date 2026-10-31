@@ -26,7 +26,13 @@ const createBaby = async (req, res) => {
     )
       return;
 
-    const { profileIcon, name, stageId, selectedCountries = [] } = req.body;
+    const {
+      profileIcon,
+      name,
+      parentName = "",
+      stageId,
+      selectedCountries = [],
+    } = req.body;
     if (stageId) {
       const stage = await BabyStage.findOne({ _id: stageId, active: true });
       if (!stage) {
@@ -72,6 +78,12 @@ const createBaby = async (req, res) => {
       user: req.user._id,
       profileIcon,
       name: name.trim(),
+      // Defaults to the account's parent / caregiver name (first baby set up right after sign-up).
+      parentName: (
+        String(parentName).trim() ||
+        user.parentCaregiverName ||
+        ""
+      ).slice(0, 50),
       babyStage: stageId || null,
       selectedCountries: finalCountries,
     });
@@ -274,7 +286,7 @@ const updateBaby = async (req, res) => {
     )
       return;
 
-    const { profileIcon, name, stageId, countryIds } = req.body;
+    const { profileIcon, name, parentName, stageId, countryIds } = req.body;
 
     const baby = await Baby.findOne({
       _id: req.params.id,
@@ -294,6 +306,10 @@ const updateBaby = async (req, res) => {
     }
 
     if (name) baby.name = name.trim();
+
+    if (parentName !== undefined) {
+      baby.parentName = String(parentName).trim().slice(0, 50);
+    }
 
     if (stageId !== undefined) {
       if (stageId) {

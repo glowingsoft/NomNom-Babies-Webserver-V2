@@ -350,7 +350,7 @@ const getRecipeById = async (req, res) => {
 
       instructions: recipe.method.map((step) => ({
         step: step.step,
-        title: `Step ${step.step}`,
+        title: step.title || `Step ${step.step}`,
         description: step.instruction,
       })),
 

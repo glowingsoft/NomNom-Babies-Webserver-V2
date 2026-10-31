@@ -85,6 +85,22 @@ const forgotPasswordOtpEmailTemplate = (otp) =>
     otp,
   });
 
+const accountDeletionOtpEmailTemplate = (otp) =>
+  otpEmailLayout({
+    title: "Confirm account deletion",
+    intro:
+      "We received a request to delete your NomNom Babies account. Enter this code on the deletion page to continue. If this wasn't you, ignore this email and your account stays safe:",
+    otp,
+  });
+
+const accountDeletedEmailTemplate = () => `
+  <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#12110D">
+    <h2 style="color:#F2692B">Your account has been deleted</h2>
+    <p>Your NomNom Babies account and its personal data have been deleted as requested. You can no longer sign in with it.</p>
+    <p>If you didn't request this, please contact us at support@nomnombabies.com.</p>
+    <p style="color:#797979;font-size:12px">© ${currentYear} NomNom Babies</p>
+  </div>`;
+
 const stripeEmailTemplate = ({ name, link }) => `
   <!DOCTYPE html>
   <html>
@@ -258,6 +274,8 @@ const supportReplyEmailTemplate = ({
 };
 
 module.exports = {
+  accountDeletionOtpEmailTemplate,
+  accountDeletedEmailTemplate,
   supportReplyEmailTemplate,
   EMAIL_LOGO_CID,
   registrationOtpEmailTemplate,

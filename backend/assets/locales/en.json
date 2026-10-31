@@ -134,5 +134,12 @@
   "min_length_violation": "{field} must be at least {minLength} characters long.",
   "notification_queued": "Notification queued",
   "device_registered": "Device registered successfully",
-  "invalid_social_token": "Sign-in could not be verified. Please try again."
+  "invalid_social_token": "Sign-in could not be verified. Please try again.",
+  "deletion_code_sent": "We sent a verification code to your email.",
+  "deletion_request_invalid": "This deletion request is invalid. Please start again from this browser.",
+  "deletion_code_expired": "The code has expired. Please request a new one.",
+  "translations_fetched": "Translations fetched successfully",
+  "translations_updated": "Translations updated successfully",
+  "translations_incomplete": "Translate all {missing} missing app texts before activating this language.",
+  "base_language_required": "Add the English app texts first."
 }

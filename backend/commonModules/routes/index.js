@@ -40,4 +40,5 @@ router.use("/reminders", reminderRoutes);
 router.use("/food-logs", foodLogRoutes);
 router.use("/subscription", subscriptionRoutes);
 router.use("/download-pdf", downloadPdfRoutes);
+router.use("/account-deletion", require("./accountDeletionRoutes.js"));
 module.exports = router;
