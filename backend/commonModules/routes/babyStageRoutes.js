@@ -1,6 +1,6 @@
 const express = require("express");
 const auth = require("../../middlewares/authMiddleware");
-const { authorizeRoles } = require("../../middlewares/roleMiddleware");
+const roleMiddleware = require("../../middlewares/roleMiddleware");
 const createRateLimiter = require("@utils/rateLimiter");
 
 const {
@@ -23,29 +23,11 @@ router.get("/", auth, getBabyStages);
 router.get("/:id", auth, getBabyStageById);
 router.post("/select", auth, selectBabyStage);
 
-router.get(
-  "/admin/all",
-  auth,
- adminGetBabyStages,
-);
-router.post(
-  "/",
-  auth,
- createStageRateLimiter,
-  createBabyStage,
-);
-router.put(
-  "/:id",
-  auth,
- updateStageRateLimiter,
-  updateBabyStage,
-);
-
-router.delete(
-  "/:id",
-  auth,
- deleteStageRateLimiter,
-  deleteBabyStage,
-);
+// Managing stages is admin-only (app users only read and select them).
+const adminOnly = roleMiddleware(["admin"]);
+router.get("/admin/all", auth, adminOnly, adminGetBabyStages);
+router.post("/", auth, adminOnly, createStageRateLimiter, createBabyStage);
+router.put("/:id", auth, adminOnly, updateStageRateLimiter, updateBabyStage);
+router.delete("/:id", auth, adminOnly, deleteStageRateLimiter, deleteBabyStage);
 
 module.exports = router;

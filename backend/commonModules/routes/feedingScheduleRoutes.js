@@ -1,6 +1,7 @@
 const express = require("express");
 const auth = require("../../middlewares/authMiddleware");
 const createRateLimiter = require("@utils/rateLimiter");
+const roleMiddleware = require("../../middlewares/roleMiddleware");
 
 const {
   getFeedingSchedule,
@@ -12,6 +13,7 @@ const {
   getUserFeedingSchedules,
   getUserBabyFeedingSchedule,
   startFeedingPlan,
+  getReminderSlots,
 } = require("../controllers/feedingScheduleController");
 
 const router = express.Router();
@@ -22,12 +24,16 @@ const deleteLimiter = createRateLimiter("deleteFeedingSchedule", 15, 15);
 const toggleLimiter = createRateLimiter("toggleSlotCompletion", 30, 15);
 
 router.get("/", auth, getFeedingSchedule);
+router.get("/reminders", auth, getReminderSlots);
 router.post("/", auth, createLimiter, createFeedingSchedule);
-router.get("/admin/user/:userId", auth, getUserFeedingSchedules);
+// Other users' schedules: admins only.
+const adminOnly = roleMiddleware(["admin"]);
+router.get("/admin/user/:userId", auth, adminOnly, getUserFeedingSchedules);
 
 router.get(
   "/admin/user/:userId/baby/:babyId",
   auth,
+  adminOnly,
   getUserBabyFeedingSchedule,
 );
 router.delete("/slot/:slotId", auth, removeScheduleSlot);

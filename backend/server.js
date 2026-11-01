@@ -26,10 +26,6 @@ require("module-alias/register");
 
 const { i18nConfig } = require("@config/i18nConfig");
 const { securityMiddleware } = require("@middlewares/security");
-const { initTextModeration } = require("@services/moderation/textModeration");
-const {
-  textModerationMiddleware,
-} = require("@services/moderation/textModeration");
 
 const { sendResponse } = require("@utils/responseUtil");
 
@@ -132,7 +128,6 @@ if (process.env.NODE_ENV !== "prod") {
 
 app.use(express.json());
 app.use(require("./middlewares/sanitize"));
-app.use(textModerationMiddleware);
 
 const routes = require("./commonModules/routes");
 const adminRoutes = require("./admin/routes");
@@ -185,7 +180,6 @@ server.listen(PORT, () => {
 (async () => {
   try {
     await connectToDB();
-    await initTextModeration();
     startCrons();
 
     setInterval(backupMongoDB, 24 * 60 * 60 * 1000);

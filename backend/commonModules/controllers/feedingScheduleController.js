@@ -646,7 +646,70 @@ const startFeedingPlan = async (req, res) => {
   }
 };
 
+/**
+ * GET /feeding-schedule/reminders?from=YYYY-MM-DD&days=3 — feeds of every baby of the user for `days` days from
+ * `from` (the phone's today), with whether each is done. The app schedules its feeding reminders on the phone
+ * from this one small request; nothing is sent from the server.
+ */
+const getReminderSlots = async (req, res) => {
+  try {
+    const { from } = req.query;
+    if (typeof from !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      return sendResponse({ res, statusCode: 400, translationKey: "invalid_data" });
+    }
+    const days = Math.min(Math.max(Number(req.query.days) || 3, 1), 7);
+    const start = new Date(`${from}T00:00:00Z`);
+    const dates = Array.from({ length: days }, (_, i) =>
+      new Date(start.getTime() + i * 864e5).toISOString().slice(0, 10),
+    );
+
+    const babies = await Baby.find({ user: req.user._id, isActive: true })
+      .select("name")
+      .lean();
+    const babyIds = babies.map((b) => b._id);
+    const [schedules, logs] = await Promise.all([
+      FeedingSchedule.find({ user: req.user._id, baby: { $in: babyIds }, date: { $in: dates } })
+        .select("baby date type title description time")
+        .sort({ date: 1, timeMinutes: 1, time: 1 })
+        .lean(),
+      FeedingLog.find({ user: req.user._id, baby: { $in: babyIds }, date: { $in: dates } })
+        .select("slotId")
+        .lean(),
+    ]);
+    const done = new Set(logs.map((l) => String(l.slotId)));
+
+    return sendResponse({
+      res,
+      statusCode: 200,
+      translationKey: "data_fetched_successfully",
+      data: babies.map((b) => ({
+        babyId: b._id,
+        name: b.name,
+        slots: schedules
+          .filter((s) => String(s.baby) === String(b._id))
+          .map((s) => ({
+            _id: s._id,
+            date: s.date,
+            type: s.type,
+            title: s.title,
+            description: s.description,
+            time: s.time,
+            completed: done.has(String(s._id)),
+          })),
+      })),
+    });
+  } catch (error) {
+    return sendResponse({
+      res,
+      statusCode: 500,
+      translationKey: "internal_server",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
+  getReminderSlots,
   getFeedingSchedule,
   getUserFeedingSchedules,
   getUserBabyFeedingSchedule,
