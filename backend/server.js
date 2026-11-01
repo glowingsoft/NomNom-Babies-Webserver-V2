@@ -1,8 +1,3 @@
-/**
- * ------------------------------------------------
- * Unified Logging (FIRST – before anything else)
- * ------------------------------------------------
- */
 require("../backend/config/logging");
 const {
   logger,
@@ -10,16 +5,9 @@ const {
   accessLogger,
 } = require("../backend/config/logging");
 
-const cors = require("cors");
 
-// expose globally (safe + intentional)
 global.logger = logger;
 
-/**
- * ------------------------------------------------
- * Env
- * ------------------------------------------------
- */
 require("dotenv").config({
   path: `.env.${process.env.NODE_ENV || "dev"}`,
 });
@@ -30,28 +18,14 @@ const morgan = require("morgan");
 const path = require("path");
 const moduleAlias = require("module-alias");
 
-/**
- * ------------------------------------------------
- * Module aliases
- * ------------------------------------------------
- */
 const aliases = require("../aliasConfig/pathAliases.config");
 for (const [alias, target] of Object.entries(aliases)) {
   moduleAlias.addAlias(alias, path.join(__dirname, "..", target));
 }
 require("module-alias/register");
 
-/**
- * ------------------------------------------------
- * App & Infra Imports
- * ------------------------------------------------
- */
 const { i18nConfig } = require("@config/i18nConfig");
 const { securityMiddleware } = require("@middlewares/security");
-const { initTextModeration } = require("@services/moderation/textModeration");
-const {
-  textModerationMiddleware,
-} = require("@services/moderation/textModeration");
 
 const { sendResponse } = require("@utils/responseUtil");
 
@@ -59,18 +33,8 @@ const connectToDB = require("@utils/server-setup");
 const { backupMongoDB } = require("@utils/dataBaseBackup");
 const { startCrons } = require("@config/cron");
 
-/**
- * ------------------------------------------------
- * Socket Server
- * ------------------------------------------------
- */
 const { createSocketServer } = require("@socketIo/socketServer");
 
-/**
- * ------------------------------------------------
- * Swagger
- * ------------------------------------------------
- */
 const swaggerUi = require("swagger-ui-express");
 const fs = require("fs");
 
@@ -105,26 +69,30 @@ if (!fs.existsSync(swaggerFilePath)) {
 const swaggerFile = require("../swagger/swagger_output.json");
 const { allowedOrigins } = require("@config/origins");
 
-/**
- * =======================================================
- * Express App
- * =======================================================
- */
 const app = express();
 app.set("trust proxy", 1);
 
-// Routes
 app.get("/", (req, res) => {
-  res.send("Hello from Node.js!");
+  res.send(
+    '<!doctype html><html><head><title>NomNom Babies</title>' +
+      '<link rel="icon" type="image/png" href="/favicon.png"></head>' +
+      "<body>Hello from Node.js!</body></html>"
+  );
 });
-app.get("/favicon.ico", (req, res) => res.status(204).end());
-app.get("/favicon.png", (req, res) => res.status(204).end());
+["favicon.ico", "favicon.png"].forEach((file) => {
+  app.get(`/${file}`, (req, res) => {
+    const dir = path.join(__dirname, "assets", "favicon");
+    const filePath = [file, "favicon.png"]
+      .map((f) => path.join(dir, f))
+      .find((p) => fs.existsSync(p));
+    if (filePath) {
+      res.set("Cache-Control", "public, max-age=86400");
+      return res.sendFile(filePath);
+    }
+    res.status(204).end();
+  });
+});
 
-/**
- * ------------------------------------------------
- * Health & Root
- * ------------------------------------------------
- */
 app.get("/api", (req, res) => {
   res.json({
     name: "Project API",
@@ -140,58 +108,43 @@ app.get("/health", (req, res) => {
   });
 });
 
-/**
- * =======================================================
- * Security
- * =======================================================
- */
 securityMiddleware(app, {
   allowedOrigins,
   adminIPWhitelist: [],
   maxRequestSize: "10mb",
   rateLimitWindow: 15 * 60 * 1000,
-  rateLimitMax: 200,
+  rateLimitMax: 1000,
 });
 
-/**
- * =======================================================
- * Middlewares
- * =======================================================
- */
-
-app.use(cors());
+// CORS is applied once, in middlewares/security.js (allowlist from WEB_ORIGINS; native apps send no Origin).
 
 app.use(i18nConfig.init);
 
-// ✅ unified access logs
 app.use(accessLogger);
 
-// keep existing middleware (unchanged)
 if (process.env.NODE_ENV !== "prod") {
   app.use(morgan("dev"));
 }
 
 app.use(express.json());
-app.use(textModerationMiddleware);
+app.use(require("./middlewares/sanitize"));
 
-/**
- * ------------------------------------------------
- * Routes
- * ------------------------------------------------
- */
 const routes = require("./commonModules/routes");
 const adminRoutes = require("./admin/routes");
 const appRoutes = require("./app/routes");
 
+// Generated PDFs are linked under /api so they reach this server behind the website's reverse proxy.
+app.use("/api/uploads", express.static(path.join(process.cwd(), "uploads")));
 app.use("/api/app", appRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api", routes);
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
-// Swagger
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
+// API docs describe every endpoint: development only.
+if (process.env.NODE_ENV !== "prod") {
+  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerFile));
+}
 
-// Fallback
 app.use((req, res) => {
   sendResponse({
     res,
@@ -200,11 +153,6 @@ app.use((req, res) => {
   });
 });
 
-/**
- * =======================================================
- * Global Express Error Handler
- * =======================================================
- */
 app.use((err, req, res, next) => {
   logger.error("Request error", {
     method: req.method,
@@ -218,11 +166,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-/**
- * =======================================================
- * Socket + HTTP Server
- * =======================================================
- */
 const server = createSocketServer(app, allowedOrigins);
 
 const PORT = process.env.PORT || 8080;
@@ -234,16 +177,9 @@ server.listen(PORT, () => {
   });
 });
 
-/**
- * =======================================================
- * Start Server AFTER DB Connection
- * =======================================================
- */
-
 (async () => {
   try {
     await connectToDB();
-    await initTextModeration();
     startCrons();
 
     setInterval(backupMongoDB, 24 * 60 * 60 * 1000);
@@ -255,11 +191,6 @@ server.listen(PORT, () => {
   }
 })();
 
-/**
- * =======================================================
- * Graceful shutdown (expected)
- * =======================================================
- */
 const shutdown = async (signal) => {
   logger.warn("Shutdown signal received", { signal });
 
@@ -281,18 +212,12 @@ const shutdown = async (signal) => {
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
-/**
- * =======================================================
- * Crash handlers (unexpected)
- * =======================================================
- */
 process.on("unhandledRejection", (reason, promise) => {
   crashLogger.fatal("Unhandled Promise Rejection", {
     reason: reason?.message || reason,
     stack: reason?.stack,
   });
 
-  // Give logger time to flush
   setTimeout(() => {
     process.exit(1);
   }, 100);

@@ -5,7 +5,7 @@ const babyPopulate = [
   },
   {
     path: "selectedCountries",
-    select: "_id name signatureFoods",
+    select: "_id name code signatureFoods",
   },
 ];
 
@@ -16,6 +16,8 @@ const getBabyInfo = (baby) => {
     _id: baby._id,
 
     name: baby.name,
+
+    parentName: baby.parentName || "",
 
     profileIcon: baby.profileIcon || "",
 
@@ -30,6 +32,7 @@ const getBabyInfo = (baby) => {
       baby.selectedCountries?.map((country) => ({
         _id: country._id,
         name: country.name,
+        code: country.code,
       })) || [],
   };
 };

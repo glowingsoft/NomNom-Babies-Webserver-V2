@@ -1,8 +1,6 @@
-// controllers/bulkInsertController.js
 const { bulkInsert, deleteCollection } = require("@utils/dbUtils");
 const { sendResponse } = require("@utils/responseUtil");
 
-// Controller function to handle bulk insertion
 const bulkInsertHandler = async (req, res) => {
   const { values, collectionName } = req.body;
 
@@ -41,7 +39,6 @@ const bulkInsertHandler = async (req, res) => {
   }
 };
 
-// Controller function to handle collection deletion
 const deleteCollectionHandler = async (req, res) => {
   const { collectionName } = req.body;
 

@@ -44,15 +44,9 @@ function logCrash({ type, error }) {
   console.error(JSON.stringify(payload));
 
   if (shouldAlert(fp)) {
-    // sendSlack(payload)
-    // sendEmail(payload)
-    // sendAzureMonitor(payload)
   }
 }
 
-/**
- * Fatal logger wrapper
- */
 function fatal(type, error) {
   logCrash({
     type,

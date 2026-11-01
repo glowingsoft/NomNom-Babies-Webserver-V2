@@ -7,9 +7,11 @@ const {
   parsePaginationParams,
   generateMeta,
   validateParams,
+  getUserToday,
 } = require("@utils/responseUtil");
-const { getBabyInfo, babyPopulate } = require("@utils/babyUtil");
+const { getBabyInfo } = require("@utils/babyUtil");
 const { logActivity } = require("@utils/activityUtil");
+const { babyPopulateStages, lookupOne } = require("@utils/aggregationUtil");
 
 const getFeedingTimetable = async (req, res) => {
   try {
@@ -27,7 +29,10 @@ const getFeedingTimetable = async (req, res) => {
       });
     }
 
-    const baby = await Baby.findById(user.activeBaby).populate(babyPopulate);
+    const [baby] = await Baby.aggregate([
+      { $match: { _id: user.activeBaby } },
+      ...babyPopulateStages(),
+    ]);
 
     if (!baby) {
       return sendResponse({
@@ -39,7 +44,7 @@ const getFeedingTimetable = async (req, res) => {
 
     const { page, limit, skip } = parsePaginationParams(req);
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = getUserToday(req.user);
 
     const query = {
       baby: baby._id,
@@ -48,7 +53,7 @@ const getFeedingTimetable = async (req, res) => {
     };
 
     const [schedules, logs, totalRecords] = await Promise.all([
-      FeedingSchedule.find(query).sort({ time: 1 }).skip(skip).limit(limit),
+      FeedingSchedule.find(query).sort({ timeMinutes: 1, time: 1 }).skip(skip).limit(limit),
 
       FeedingLog.find(query),
 
@@ -74,7 +79,7 @@ const getFeedingTimetable = async (req, res) => {
 
       badge: meal.completed
         ? "completed"
-        : nextMeal && String(meal.id) === String(nextMeal.id)
+        : nextMeal && String(meal._id) === String(nextMeal._id)
           ? "upnext"
           : null,
     }));
@@ -124,7 +129,16 @@ const getFeedingTimetable = async (req, res) => {
 
 const getTimetables = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).populate("activeBaby");
+    const castedUser = User.find({ _id: req.user._id }).cast(User);
+
+    const [user] = await User.aggregate([
+      { $match: castedUser },
+      ...lookupOne({
+        from: Baby.collection.name,
+        field: "activeBaby",
+        fields: ["_id", "name"],
+      }),
+    ]);
 
     if (!user?.activeBaby) {
       return sendResponse({
@@ -136,41 +150,32 @@ const getTimetables = async (req, res) => {
 
     const { page, limit, skip } = parsePaginationParams(req);
 
-    const query = {
-      baby: user.activeBaby,
-      user: req.user._id,
-    };
+    // One timetable per day: group the slots by date, newest first, and paginate over days.
+    const [result] = await FeedingSchedule.aggregate([
+      { $match: { baby: user.activeBaby._id, user: user._id } },
+      { $group: { _id: "$date", slots: { $sum: 1 } } },
+      { $sort: { _id: -1 } },
+      {
+        $facet: {
+          data: [{ $skip: skip }, { $limit: limit }],
+          total: [{ $count: "count" }],
+        },
+      },
+    ]);
 
-    const totalRecords = await FeedingSchedule.countDocuments(query);
-
-    const timetables = await FeedingSchedule.find(query)
-      .select("date")
-      .sort({ date: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const grouped = [
-      ...new Map(
-        timetables.map((item) => [
-          item.date,
-          {
-            date: item.date,
-          },
-        ]),
-      ).values(),
-    ];
-
+    const totalRecords = result?.total?.[0]?.count || 0;
     const title = `Feeding Timetable for ${user.activeBaby.name}`;
 
     return sendResponse({
       res,
       statusCode: 200,
       translationKey: "data_fetched_successfully",
-      data: grouped.map((x) => ({
-        title: title,
-        date: x.date,
-        meta: generateMeta(page, limit, totalRecords),
+      data: (result?.data || []).map((day) => ({
+        title,
+        date: day._id,
+        totalSlots: day.slots,
       })),
+      meta: generateMeta(page, limit, totalRecords),
     });
   } catch (error) {
     return sendResponse({
@@ -186,18 +191,35 @@ const getTimetableDetail = async (req, res) => {
   try {
     if (!validateParams(req, res, { queryParams: ["date"] })) return;
     const { date } = req.query;
-    const user = await User.findById(req.user._id).populate("activeBaby");
+    const castedUser = User.find({ _id: req.user._id }).cast(User);
 
-    const baby = await Baby.findById(user.activeBaby).populate(babyPopulate);
+    const user =
+      (
+        await User.aggregate([
+          { $match: castedUser },
+          ...lookupOne({
+            from: Baby.collection.name,
+            field: "activeBaby",
+            fields: ["_id"],
+          }),
+        ])
+      )[0] ?? null;
+
+    const activeBabyId = user.activeBaby ? user.activeBaby._id : null;
+
+    const [baby] = await Baby.aggregate([
+      { $match: { _id: activeBabyId } },
+      ...babyPopulateStages(),
+    ]);
 
     const schedules = await FeedingSchedule.find({
-      baby: user.activeBaby,
+      baby: activeBabyId,
       user: req.user._id,
       date,
-    }).sort({ time: 1 });
+    }).sort({ timeMinutes: 1, time: 1 });
 
     const logs = await FeedingLog.find({
-      baby: user.activeBaby,
+      baby: activeBabyId,
       user: req.user._id,
       date,
     });

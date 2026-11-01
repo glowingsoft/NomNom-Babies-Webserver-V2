@@ -10,10 +10,13 @@ const {
 } = require("@utils/responseUtil");
 const { getBabyInfo, babyPopulate } = require("@utils/babyUtil");
 const { logActivity } = require("@utils/activityUtil");
+const {
+  babyPopulateStages,
+  babyDocumentDefaults,
+} = require("@utils/aggregationUtil");
 const { sendUserNotifications } = require("./communicationController");
 const { NotificationTypes } = require("@models/Notifications");
 
-// Create a new baby profile
 const createBaby = async (req, res) => {
   try {
     if (
@@ -23,8 +26,13 @@ const createBaby = async (req, res) => {
     )
       return;
 
-    const { profileIcon, name, stageId, selectedCountries = [] } = req.body;
-    // Validate stage if provided
+    const {
+      profileIcon,
+      name,
+      parentName = "",
+      stageId,
+      selectedCountries = [],
+    } = req.body;
     if (stageId) {
       const stage = await BabyStage.findOne({ _id: stageId, active: true });
       if (!stage) {
@@ -36,7 +44,6 @@ const createBaby = async (req, res) => {
       }
     }
 
-    // Get user and onboarding countries
     const user = await User.findById(req.user._id);
 
     const finalCountries =
@@ -44,7 +51,6 @@ const createBaby = async (req, res) => {
         ? selectedCountries
         : user.onboarding?.selectedCountries || [];
 
-    // Validate countries
     if (finalCountries.length > 2) {
       return sendResponse({
         res,
@@ -72,6 +78,12 @@ const createBaby = async (req, res) => {
       user: req.user._id,
       profileIcon,
       name: name.trim(),
+      // Defaults to the account's parent / caregiver name (first baby set up right after sign-up).
+      parentName: (
+        String(parentName).trim() ||
+        user.parentCaregiverName ||
+        ""
+      ).slice(0, 50),
       babyStage: stageId || null,
       selectedCountries: finalCountries,
     });
@@ -84,7 +96,7 @@ const createBaby = async (req, res) => {
 
     await baby.populate([
       { path: "babyStage", select: "_id title features" },
-      { path: "selectedCountries", select: "_id name signatureFoods" },
+      { path: "selectedCountries", select: "_id name code signatureFoods" },
     ]);
 
     void logActivity({
@@ -102,15 +114,14 @@ const createBaby = async (req, res) => {
       },
     });
 
-    //send notificaiton for new created baby
     void sendUserNotifications({
       recipientIds: [req.user._id],
       title: "New Baby added",
       body: `Created Baby Profile ${baby.name}`,
       data: { type: NotificationTypes.NEW_BABY, objectType: "Baby" },
-      sender: null, // Optional: sender ID
-      objectId: baby._id, // Optional: object ID
-      saveNotification: true, // send false if you don't want to save notification in db
+      sender: null,
+      objectId: baby._id,
+      saveNotification: true,
     });
 
     return sendResponse({
@@ -129,7 +140,6 @@ const createBaby = async (req, res) => {
   }
 };
 
-// Get all babies for logged-in user
 const getBabies = async (req, res) => {
   try {
     const { page, limit } = parsePaginationParams(req);
@@ -137,12 +147,16 @@ const getBabies = async (req, res) => {
       user: req.user._id,
       isActive: true,
     };
+    const castedQuery = Baby.find(query).cast(Baby);
     const [babies, totalRecords] = await Promise.all([
-      Baby.find(query)
-        .populate(babyPopulate)
-        .sort({ createdAt: 1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+      Baby.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: 1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...babyPopulateStages(),
+        { $addFields: babyDocumentDefaults },
+      ]),
 
       Baby.countDocuments(query),
     ]);
@@ -187,12 +201,17 @@ const getUserBabies = async (req, res) => {
       isActive: true,
     };
 
+    const castedQuery = Baby.find(query).cast(Baby);
+
     const [babies, totalRecords] = await Promise.all([
-      Baby.find(query)
-        .populate(babyPopulate)
-        .sort({ createdAt: 1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+      Baby.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: 1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...babyPopulateStages(),
+        { $addFields: babyDocumentDefaults },
+      ]),
 
       Baby.countDocuments(query),
     ]);
@@ -216,7 +235,6 @@ const getUserBabies = async (req, res) => {
   }
 };
 
-// Get a single baby by ID
 const getBabyById = async (req, res) => {
   try {
     if (
@@ -224,11 +242,18 @@ const getBabyById = async (req, res) => {
     )
       return;
 
-    const baby = await Baby.findOne({
+    const castedQuery = Baby.find({
       _id: req.params.id,
       user: req.user._id,
       isActive: true,
-    }).populate(babyPopulate);
+    }).cast(Baby);
+
+    const [baby] = await Baby.aggregate([
+      { $match: castedQuery },
+      { $limit: 1 },
+      ...babyPopulateStages(),
+      { $addFields: babyDocumentDefaults },
+    ]);
 
     if (!baby) {
       return sendResponse({
@@ -254,7 +279,6 @@ const getBabyById = async (req, res) => {
   }
 };
 
-// Update a baby profile (name, stage, countries)
 const updateBaby = async (req, res) => {
   try {
     if (
@@ -262,7 +286,7 @@ const updateBaby = async (req, res) => {
     )
       return;
 
-    const { profileIcon, name, stageId, countryIds } = req.body;
+    const { profileIcon, name, parentName, stageId, countryIds } = req.body;
 
     const baby = await Baby.findOne({
       _id: req.params.id,
@@ -282,6 +306,10 @@ const updateBaby = async (req, res) => {
     }
 
     if (name) baby.name = name.trim();
+
+    if (parentName !== undefined) {
+      baby.parentName = String(parentName).trim().slice(0, 50);
+    }
 
     if (stageId !== undefined) {
       if (stageId) {
@@ -357,7 +385,6 @@ const updateBaby = async (req, res) => {
   }
 };
 
-// Delete a baby profile (soft delete)
 const deleteBaby = async (req, res) => {
   try {
     if (
@@ -390,7 +417,6 @@ const deleteBaby = async (req, res) => {
       },
     });
 
-    // If deleted baby was the active one, switch to another
     const user = await User.findById(req.user._id);
     if (String(user.activeBaby) === String(baby._id)) {
       const nextBaby = await Baby.findOne({
@@ -416,7 +442,6 @@ const deleteBaby = async (req, res) => {
   }
 };
 
-// Switch active baby
 const switchActiveBaby = async (req, res) => {
   try {
     const userId = req.user._id;

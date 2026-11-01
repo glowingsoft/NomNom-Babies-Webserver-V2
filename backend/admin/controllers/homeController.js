@@ -1,5 +1,5 @@
-const { User } = require("@models/UserModel"); // Assuming this is the User model path
-const Review = require("@models/Review"); // Assuming this is the Review model path
+const { User } = require("@models/UserModel");
+const Review = require("@models/Review");
 
 const {
   sendResponse,
@@ -22,8 +22,6 @@ const getHome = async (req, res) => {
     });
   }
 };
-
-
 
 module.exports = {
   getHome,

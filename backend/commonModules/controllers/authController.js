@@ -4,16 +4,38 @@ const moment = require("moment-timezone");
 const Baby = require("@models/Baby");
 const { sendResponse, validateParams } = require("@utils/responseUtil");
 const { formatUserResponse } = require("@utils/userResponseUtil");
-const { sendEmailViaBrevo } = require("@utils/emailUtil");
-const {
-  registrationOtpEmailTemplate,
-  forgotPasswordOtpEmailTemplate,
-} = require("@utils/emailTemplates");
+const { sendOtpEmail } = require("@utils/emailUtil");
 const { createOrSkipDevice, Devices } = require("@models/Devices");
 const validator = require("validator");
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const jwksClient = require("jwks-rsa");
+const { OAuth2Client } = require("google-auth-library");
 const { babyPopulate, getBabyInfo } = require("@utils/babyUtil");
 const { logActivity } = require("@utils/activityUtil");
+const { hardDeleteUserById, DELETED_STATUS } = require("@utils/hardDeleteUser");
+const { userCache } = require("@config/nodeCache");
+// New passwords: 8–128 characters with at least one letter and one number (login accepts older ones).
+const isStrongPassword = (pw) =>
+  typeof pw === "string" &&
+  pw.length >= 8 &&
+  pw.length <= 128 &&
+  /[A-Za-z]/.test(pw) &&
+  /\d/.test(pw);
+
+const {
+  startSession,
+  rotateRefreshToken,
+  revokeFamily,
+  revokeUserSessions,
+  clearRefreshCookie,
+} = require("@utils/authTokens");
+
+/**
+ * Echoes the OTP in the response for development / QA builds only, so testers don't need the inbox.
+ * Production never returns it.
+ */
+const exposeOtp = (otp) => (process.env.NODE_ENV === "prod" ? {} : { otp });
 
 const normalizeRole = (role) => {
   if (!role) {
@@ -32,7 +54,6 @@ const getFormattedUserResponse = async (user, token = null) => {
   const refreshedUser = await User.findById(user._id);
   return formatUserResponse(refreshedUser || user, token);
 };
-//register
 const register = async (req, res) => {
   try {
     const requestedRole = normalizeRole(req.body.role);
@@ -94,6 +115,10 @@ const register = async (req, res) => {
       });
     }
 
+    if (!isStrongPassword(password)) {
+      return sendResponse({ res, statusCode: 400, translationKey: "weak_password" });
+    }
+
     const normalizedEmail = String(email).trim().toLowerCase();
     const assignedRole = isAdminSignup ? "admin" : "user";
     const existingUser = await User.findOne({
@@ -101,7 +126,6 @@ const register = async (req, res) => {
     });
 
     if (existingUser) {
-      // verified email already exists
       if (existingUser.verificationStatus.email === "verified") {
         return sendResponse({
           res,
@@ -110,7 +134,6 @@ const register = async (req, res) => {
         });
       }
 
-      // pending email
       if (existingUser.verificationStatus.email === "pending") {
         existingUser.name = name;
 
@@ -139,12 +162,13 @@ const register = async (req, res) => {
         const otp = existingUser.generateOtp("email", existingUser.timezone);
 
         await existingUser.save();
+        await sendOtpEmail(existingUser.email, otp);
 
         if (deviceId && deviceType) {
           await createOrSkipDevice(existingUser._id, deviceId, deviceType);
         }
 
-        const token = existingUser.generateAuthToken();
+        const token = await startSession(existingUser, req, res);
 
         const response = await getFormattedUserResponse(existingUser, token);
 
@@ -167,7 +191,7 @@ const register = async (req, res) => {
           data: {
             ...response,
 
-            otp,
+            ...exposeOtp(otp),
           },
         });
       }
@@ -194,11 +218,12 @@ const register = async (req, res) => {
 
     const otp = user.generateOtp("email", timezone);
     await user.save();
+    await sendOtpEmail(user.email, otp);
     if (deviceId && deviceType) {
       await createOrSkipDevice(user._id, deviceId, deviceType);
     }
 
-    const token = user.generateAuthToken();
+    const token = await startSession(user, req, res);
     const response = await getFormattedUserResponse(user, token);
 
     logActivity({
@@ -216,7 +241,7 @@ const register = async (req, res) => {
       translationKey: "signup_successful",
       data: {
         ...response,
-        otp,
+        ...exposeOtp(otp),
       },
     });
   } catch (error) {
@@ -234,8 +259,6 @@ const register = async (req, res) => {
     });
   }
 };
-
-//login
 
 const login = async (req, res) => {
   try {
@@ -256,25 +279,33 @@ const login = async (req, res) => {
     if (!validateParams(req, res, validationOptions)) {
       return;
     }
+    // Credentials must be plain strings (blocks {"$gt": ""}-style operator injection).
+    if (typeof email !== "string" || typeof password !== "string") {
+      return sendResponse({
+        res,
+        statusCode: 400,
+        translationKey: "invalid_credentials",
+      });
+    }
 
     const user = await User.findByCredentials(email, password);
 
+    // Same answer for an unknown email and a wrong password, so login can't be used to find accounts.
     if (user.error) {
-      if (user.error === "user_not_found") {
-        return sendResponse({
-          res,
-          statusCode: 404,
-          translationKey: "user_not_found",
-        });
-      }
+      return sendResponse({
+        res,
+        statusCode: 401,
+        translationKey: "invalid_credentials",
+      });
+    }
 
-      if (user.error === "incorrect_password") {
-        return sendResponse({
-          res,
-          statusCode: 401,
-          translationKey: "incorrect_password",
-        });
-      }
+    // The admin panel signs in with userType "admin": only admin accounts may.
+    if (req.body.userType === "admin" && user.accountState?.userType !== "admin") {
+      return sendResponse({
+        res,
+        statusCode: 403,
+        translationKey: "unauthorized_admin_login",
+      });
     }
 
     if (
@@ -294,6 +325,7 @@ const login = async (req, res) => {
       const otp = user.generateOtp("email", user.timezone);
 
       await user.save();
+      await sendOtpEmail(user.email, otp);
 
       return sendResponse({
         res,
@@ -303,7 +335,7 @@ const login = async (req, res) => {
         translationKey: "your_account",
 
         data: {
-          otp,
+          ...exposeOtp(otp),
         },
       });
     }
@@ -326,9 +358,8 @@ const login = async (req, res) => {
       await user.save();
     }
 
-    const token = user.generateAuthToken();
+    const token = await startSession(user, req, res);
 
-    // Get active baby
     let activeBaby = null;
 
     if (user.activeBaby) {
@@ -399,10 +430,7 @@ const getMe = async (req, res) => {
   }
 };
 
-// Generate OTP
 const generateOtp = async (req, res) => {
-  // const session = await mongoose.startSession();
-  // session.startTransaction();
 
   try {
     const { email, phoneNumber, type } = req.body;
@@ -413,7 +441,6 @@ const generateOtp = async (req, res) => {
       return;
     }
 
-    // Validate phone number format
     if (
       type === "phoneNumber" &&
       phoneNumber &&
@@ -445,7 +472,6 @@ const generateOtp = async (req, res) => {
       });
     }
 
-    // Check if account is restricted
     if (["restricted", "suspended"].includes(user.accountState.status)) {
       return sendResponse({
         res,
@@ -466,26 +492,19 @@ const generateOtp = async (req, res) => {
       }
     }
 
-    // await user.save({ session });
     await user.save();
 
-    // Send email or SMS within the transaction
-    const subject = "Password Reset OTP";
-    const mBody = forgotPasswordOtpEmailTemplate(otp);
-    //await sendEmailViaBrevo([email], subject, mBody);
-
-    // await session.commitTransaction();
-    // session.endSession();
+    if (type === "email") {
+      await sendOtpEmail(user.email, otp);
+    }
 
     return sendResponse({
       res,
       statusCode: 201,
       translationKey: "otp_generated",
-      data: { otp },
+      data: { ...exposeOtp(otp) },
     });
   } catch (error) {
-    // await session.abortTransaction();
-    // session.endSession();
 
     return sendResponse({
       res,
@@ -496,10 +515,7 @@ const generateOtp = async (req, res) => {
   }
 };
 
-//Verify otp
 const verifyOtp = async (req, res) => {
-  // const session = await mongoose.startSession();
-  // session.startTransaction();
 
   try {
     const { email, phoneNumber, type, otp } = req.body;
@@ -513,7 +529,6 @@ const verifyOtp = async (req, res) => {
       return;
     }
 
-    // Validate phone number format if the OTP is for phone
     if (
       type === "phoneNumber" &&
       phoneNumber &&
@@ -545,12 +560,10 @@ const verifyOtp = async (req, res) => {
       });
     }
 
-    // Access the correct OTP based on the type (email or phone)
     const userOtpInfo =
       type === "email" ? user.otpInfo.emailOtp : user.otpInfo.phoneNumberOtp;
 
     if (type === "email") {
-      // Check if the OTP matches
       if (userOtpInfo.otp !== otp.toString()) {
         return sendResponse({
           res,
@@ -559,7 +572,6 @@ const verifyOtp = async (req, res) => {
         });
       }
 
-      // Check if the OTP has expired
       const currentTime = moment.tz(Date.now(), user.timezone).valueOf();
       if (userOtpInfo.otpExpires && userOtpInfo.otpExpires < currentTime) {
         return sendResponse({
@@ -570,28 +582,20 @@ const verifyOtp = async (req, res) => {
       }
     }
 
-    // Clear the OTP and OTP expiration after successful verification
     userOtpInfo.otp = "";
     userOtpInfo.otpExpires = "";
-    userOtpInfo.otpUsed = true; // Mark OTP as used
-    user.verificationStatus[type] = "verified"; // Mark verification as complete
+    userOtpInfo.otpUsed = true;
+    user.verificationStatus[type] = "verified";
 
-    // Generate a password reset token (JWT or a UUID)
-    const resetToken = generateResetToken(); // Function to generate a secure token
-    user.resetToken = resetToken; // Save the token to the user model
+    const resetToken = generateResetToken();
+    user.resetToken = resetToken;
 
-    // await user.save({ session });
     await user.save();
-    // await session.commitTransaction();
-    // session.endSession();
 
-    // Fetch the updated user and profile icon simultaneously
     const updatedUser = await User.findById(user._id);
 
-    // Generate a new auth token for the user
-    const token = user.generateAuthToken();
+    const token = await startSession(user, req, res);
 
-    // Format the user response using the utility function
     const response = formatUserResponse(updatedUser, token);
 
     return sendResponse({
@@ -604,8 +608,6 @@ const verifyOtp = async (req, res) => {
       },
     });
   } catch (error) {
-    // await session.abortTransaction();
-    // session.endSession();
     console.error("Error during OTP verification:", error);
     return sendResponse({
       res,
@@ -616,7 +618,6 @@ const verifyOtp = async (req, res) => {
   }
 };
 
-// Forget Password
 const forgetPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -671,17 +672,14 @@ const forgetPassword = async (req, res) => {
 
     await user.save();
 
-    const subject = "Password Reset OTP";
-    const html = forgotPasswordOtpEmailTemplate(otp);
-
-    await sendEmailViaBrevo([normalizedEmail], subject, html);
+    await sendOtpEmail(normalizedEmail, otp, "forgot-password");
 
     return sendResponse({
       res,
       statusCode: 200,
       translationKey: "otp_sent_successfully",
       data: {
-        otp,
+        ...exposeOtp(otp),
       },
     });
   } catch (error) {
@@ -694,7 +692,6 @@ const forgetPassword = async (req, res) => {
   }
 };
 
-// Reset Password
 const resetPassword = async (req, res) => {
   try {
     const { email, newPassword, resetToken } = req.body;
@@ -705,8 +702,13 @@ const resetPassword = async (req, res) => {
     if (!validateParams(req, res, validationOptions)) {
       return;
     }
+    if (typeof email !== "string" || typeof resetToken !== "string" || !resetToken) {
+      return sendResponse({ res, statusCode: 400, translationKey: "invalid_data" });
+    }
+    if (!isStrongPassword(newPassword)) {
+      return sendResponse({ res, statusCode: 400, translationKey: "weak_password" });
+    }
 
-    // Find the user by email
     const user = await User.findOne({
       email: email.trim().toLowerCase(),
       resetToken: resetToken,
@@ -720,22 +722,21 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    // Update the password and mark OTP as used
     user.password = newPassword;
-    user.otpInfo.otpUsed = true; // Mark OTP as used
-    user.otpInfo.otp = ""; // Clear OTP
-    user.otpInfo.otpExpires = ""; // Clear OTP expiration
-    user.resetToken = ""; // Clear OTP token
+    user.otpInfo.otpUsed = true;
+    user.otpInfo.otp = "";
+    user.otpInfo.otpExpires = "";
+    user.resetToken = "";
 
     await user.save();
 
-    // Fetch the updated user with profile icon populated and generate a token simultaneously
+    // A password reset signs out every device; this request starts a fresh sign-in.
+    await revokeUserSessions(user._id, { reason: "password_reset" });
     const [updatedUser, token] = await Promise.all([
       User.findById(user._id),
-      user.generateAuthToken(),
+      startSession(user, req, res),
     ]);
 
-    // Format the user response using the utility function
     const response = formatUserResponse(updatedUser, token);
 
     logActivity({
@@ -769,12 +770,14 @@ const logout = async (req, res) => {
     const userId = req.user._id;
 
     if (deviceId) {
-      // Use $pull to remove the specific device from the devices array
       await Devices.updateOne(
         { userId: userId },
         { $pull: { devices: { deviceId: deviceId } } },
       );
     }
+    // Ends this sign-in: its access token stops working and its refresh token can't be swapped any more.
+    await revokeFamily(req.sessionId, "logout");
+    clearRefreshCookie(res);
 
     return sendResponse({
       res,
@@ -792,38 +795,23 @@ const logout = async (req, res) => {
 };
 const deleteAccount = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const email = req.user.email;
+    const result = await hardDeleteUserById(req.user._id);
 
-    // Generate a random email using the userId and original email
-    const randomEmail = `deleted_user_${userId}_${Date.now()}@example.com`;
-
-    // Update the user's account state to hardDeleted and set the finalDeletionDate
-    await User.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          email: randomEmail, // replace with random email
-          previousEmail: email, // store the original email
-          "accountState.status": "sotDeleted",
-          "accountState.finalDeletionDate": new Date(), // set to now or your logic
-        },
-      },
-      { new: true },
-    );
-
-    await Devices.updateOne(
-      { userId: userId },
-      { $set: { devices: [] } }, // This will empty the array of devices for the user
-    );
+    if (!result) {
+      return sendResponse({
+        res,
+        statusCode: 404,
+        translationKey: "user_not_found",
+      });
+    }
 
     logActivity({
-      user: userId,
-      userType,
+      user: req.user._id,
+      userType: req.user.userType,
       action: "Account Deleted",
-      detail: `${email} deleted their account`,
+      detail: `${req.user.email} deleted their account`,
       module: "auth",
-      targetId: userId,
+      targetId: req.user._id,
     });
 
     return sendResponse({
@@ -836,48 +824,101 @@ const deleteAccount = async (req, res) => {
       res,
       statusCode: 500,
       translationKey: error.message,
-      error: error,
+      error,
     });
   }
 };
 
+const googleClient = new OAuth2Client();
+const appleKeys = jwksClient({ jwksUri: "https://appleid.apple.com/auth/keys" });
+
+/**
+ * Verifies the provider's ID token and returns the identity it vouches for. The client-sent socialId / email
+ * are never trusted.
+ * Env: GOOGLE_CLIENT_IDS (comma-separated OAuth client ids allowed as audience), APPLE_BUNDLE_IDS.
+ */
+const verifySocialToken = async (provider, idToken) => {
+  const list = (v) => (v || "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (provider === "google") {
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: list(process.env.GOOGLE_CLIENT_IDS),
+    });
+    const p = ticket.getPayload();
+    return { socialId: p.sub, email: p.email, name: p.name };
+  }
+  if (provider === "apple") {
+    const { header } = jwt.decode(idToken, { complete: true }) || {};
+    const key = await appleKeys.getSigningKey(header?.kid);
+    const p = jwt.verify(idToken, key.getPublicKey(), {
+      algorithms: ["RS256"],
+      issuer: "https://appleid.apple.com",
+      audience: list(process.env.APPLE_BUNDLE_IDS || "com.nomnombabies"),
+    });
+    return { socialId: p.sub, email: p.email, name: null };
+  }
+  throw new Error("unsupported_provider");
+};
+
 const socialAuth = async (req, res) => {
-  const { provider, socialId, email, name, deviceId, deviceType, timezone } =
-    req.body;
-  // const session = await mongoose.startSession();
-  // session.startTransaction();
+  const { provider, idToken, deviceId, deviceType, timezone } = req.body;
 
+  const validationOptions = {
+    rawData: ["provider", "idToken", "deviceId", "deviceType", "timezone"],
+    enumFields: {
+      provider: ["google", "apple"],
+    },
+  };
+  if (!validateParams(req, res, validationOptions)) {
+    return;
+  }
+
+  let identity;
   try {
-    const validationOptions = {
-      rawData: [
-        "provider",
-        "socialId",
-        "email",
-        "name",
-        "deviceId",
-        "deviceType",
-        "timezone",
-      ],
-      enumFields: {
-        provider: ["google", "facebook", "apple"], // Allowed values for provider
-      },
-    };
+    identity = await verifySocialToken(provider, idToken);
+  } catch (error) {
+    return sendResponse({
+      res,
+      statusCode: 401,
+      translationKey: "invalid_social_token",
+      error,
+    });
+  }
 
-    if (!validateParams(req, res, validationOptions)) {
-      return;
-    }
+  const { socialId } = identity;
+  const providerField = `${provider}Id`;
+  // Apple shares the name only on the first sign-in, so the client sends it along.
+  const name = (identity.name || req.body.name || "").trim();
+  // No email (e.g. Apple without email scope): derive a stable placeholder from the provider id.
+  const email = String(identity.email || `${socialId}@${provider}.com`)
+    .trim()
+    .toLowerCase();
 
-    // Check for existing user by email
-    const existingUser = await User.findOne({ email });
+  if (!validator.isEmail(email)) {
+    return sendResponse({
+      res,
+      statusCode: 400,
+      translationKey: "email_invalid",
+    });
+  }
 
-    // If user exists, update or link the social provider
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    // Deleted accounts are not recoverable: the same email / social id creates a new user.
+    const existingUser = await User.findOne({
+      $or: [{ [providerField]: socialId }, { email }],
+      "accountState.status": { $ne: DELETED_STATUS },
+    }).session(session);
+
+    let user;
+    let isNewUser = false;
+    let providerLinked = false;
+
     if (existingUser) {
-      let providerLinked = false;
-
-      if (
-        existingUser.accountState.status === "restricted" ||
-        existingUser.accountState.status === "suspended"
-      ) {
+      if (["restricted", "suspended"].includes(existingUser.accountState.status)) {
+        await session.abortTransaction();
+        session.endSession();
         return sendResponse({
           res,
           statusCode: 403,
@@ -885,133 +926,89 @@ const socialAuth = async (req, res) => {
         });
       }
 
-      // Check if the social ID is already linked, if not, link it
-      if (provider === "google" && !existingUser.googleId) {
-        existingUser.googleId = socialId; // Link Google account
-        providerLinked = true;
-      } else if (provider === "facebook" && !existingUser.facebookId) {
-        existingUser.facebookId = socialId; // Link Facebook account
-        providerLinked = true;
-      } else if (provider === "apple" && !existingUser.appleId) {
-        existingUser.appleId = socialId; // Link Apple account
+      if (!existingUser[providerField]) {
+        existingUser[providerField] = socialId;
         providerLinked = true;
       }
-
-      // Always update the provider and timezone, regardless of providerLinked status
-      existingUser.provider = provider; // Update the provider field to reflect the latest social login
-      existingUser.timezone = timezone; // Update the timezone to reflect the user's current login
-      existingUser.accountState.status = "active"; // Ensure the account is active
-      existingUser.name = name;
-      existingUser.parentCaregiverName = name;
-
-      // await existingUser.save({ session });
-      await existingUser.save();
-
-      await createOrSkipDevice(existingUser._id, deviceId, deviceType);
-      const token = existingUser.generateAuthToken();
-
-      let activeBaby = null;
-
-      if (existingUser.activeBaby) {
-        activeBaby = await Baby.findById(existingUser.activeBaby).populate(
-          babyPopulate,
-        );
+      // A verified provider email replaces a placeholder / older one.
+      if (identity.email && existingUser.email !== email) {
+        existingUser.email = email;
+      }
+      existingUser.verificationStatus.email = "verified";
+      existingUser.provider = provider;
+      existingUser.timezone = timezone || existingUser.timezone;
+      existingUser.accountState.status = "active";
+      if (name && !existingUser.name) existingUser.name = name;
+      if (name && !existingUser.parentCaregiverName) {
+        existingUser.parentCaregiverName = name;
       }
 
-      const response = formatUserResponse(
-        existingUser,
-        token,
-        [],
-        ["resetToken"],
-      );
-
-      response.babyInfo = activeBaby ? getBabyInfo(activeBaby) : null;
-      response.hasBaby = !!activeBaby;
-
-      logActivity({
-        user: existingUser._id,
-        userType: existingUser.accountState.userType,
-        action: "User Logged In",
-        detail: `${existingUser.name} logged in via ${provider}${providerLinked ? " (newly linked)" : ""}`,
-        module: "auth",
-        targetId: existingUser._id,
-        metadata: { provider },
-      });
-
-      // await session.commitTransaction();
-      // session.endSession();
-
-      return sendResponse({
-        res,
-        statusCode: 200,
-        translationKey: "login_success",
-        data: response,
-      });
+      await existingUser.save({ session });
+      user = existingUser;
     } else {
-      // If user does not exist, treat this as a signup
-      const newUser = new User({
+      const fallbackName = name || email.split("@")[0];
+      user = new User({
         email,
-        name,
-        parentCaregiverName: name,
-        provider, // Set the initial provider
-        [`${provider}Id`]: socialId, // Dynamically store the provider ID
+        name: fallbackName,
+        parentCaregiverName: fallbackName,
+        provider,
+        [providerField]: socialId,
         timezone,
-        verificationStatus: {
-          email: "verified", // Mark email as verified
-        },
-        accountState: {
-          userType: "user",
-          status: "active",
-        },
+        verificationStatus: { email: "verified" },
+        accountState: { userType: "user", status: "active" },
       });
-
-      // await newUser.save({ session });
-      await newUser.save();
-
-      await createOrSkipDevice(newUser._id, deviceId, deviceType);
-      // Generate a token for the new user
-      const token = newUser.generateAuthToken();
-
-      const response = formatUserResponse(newUser, token, [], ["resetToken"]);
-
-      // New user has no active baby initially
-      response.babyInfo = null;
-      response.hasBaby = false;
-
-      logActivity({
-        user: newUser._id,
-        userType: newUser.accountState.userType,
-        action: "User Signed Up",
-        detail: `${newUser.name} signed up via ${provider}`,
-        module: "auth",
-        targetId: newUser._id,
-        metadata: { provider },
-      });
-
-      // await session.commitTransaction();
-      // session.endSession();
-
-      return sendResponse({
-        res,
-        statusCode: 201,
-        translationKey: "signup_successful",
-        data: response,
-      });
+      await user.save({ session });
+      isNewUser = true;
     }
+
+    await session.commitTransaction();
+    session.endSession();
+
+    if (typeof deviceId === "string" && deviceId.trim() && deviceType) {
+      await createOrSkipDevice(user._id, deviceId, deviceType);
+    }
+
+    const token = await startSession(user, req, res);
+    const activeBaby = user.activeBaby
+      ? await Baby.findOne({ _id: user.activeBaby, isActive: true }).populate(
+          babyPopulate,
+        )
+      : null;
+
+    const response = formatUserResponse(user, token, [], ["resetToken"]);
+    response.babyInfo = activeBaby ? getBabyInfo(activeBaby) : null;
+    response.hasBaby = !!activeBaby;
+
+    logActivity({
+      user: user._id,
+      userType: user.accountState.userType,
+      action: isNewUser ? "User Signed Up" : "User Logged In",
+      detail: `${user.name} ${isNewUser ? "signed up" : "logged in"} via ${provider}${
+        providerLinked ? " (newly linked)" : ""
+      }`,
+      module: "auth",
+      targetId: user._id,
+      metadata: { provider },
+    });
+
+    return sendResponse({
+      res,
+      statusCode: isNewUser ? 201 : 200,
+      translationKey: isNewUser ? "signup_successful" : "login_success",
+      data: response,
+    });
   } catch (error) {
-    // Rollback transaction in case of any error
-    // await session.abortTransaction();
-    // session.endSession();
+    if (session.inTransaction()) await session.abortTransaction();
+    session.endSession();
     return sendResponse({
       res,
       statusCode: 500,
       translationKey: error.message,
-      error: error,
+      error,
     });
   }
 };
 
-// change-password
 const changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -1019,12 +1016,12 @@ const changePassword = async (req, res) => {
     if (
       !validateParams(req, res, {
         rawData: ["currentPassword", "newPassword"],
-        minLengthFields: {
-          newPassword: 6,
-        },
       })
     )
       return;
+    if (typeof currentPassword !== "string" || !isStrongPassword(newPassword)) {
+      return sendResponse({ res, statusCode: 400, translationKey: "weak_password" });
+    }
 
     const user = await User.findById(req.user._id);
 
@@ -1049,7 +1046,6 @@ const changePassword = async (req, res) => {
       });
     }
 
-    // prevent same password
     const isSamePassword = await bcrypt.compare(newPassword, user.password);
 
     if (isSamePassword) {
@@ -1063,6 +1059,11 @@ const changePassword = async (req, res) => {
     user.password = newPassword;
 
     await user.save();
+    // Other devices must sign in again with the new password; this one stays signed in.
+    await revokeUserSessions(user._id, {
+      except: req.sessionId,
+      reason: "password_changed",
+    });
 
     logActivity({
       user: user._id,
@@ -1088,7 +1089,53 @@ const changePassword = async (req, res) => {
   }
 };
 
+// POST /api/auth/refresh { refreshToken } (apps) or the httpOnly cookie (web) → new access + refresh token.
+const refresh = async (req, res) => {
+  try {
+    const result = await rotateRefreshToken(req, res, {
+      loadUser: async (id) => {
+        const user = await User.findById(id).select("accountState");
+        const status = user?.accountState?.status || "active";
+        return user && !["restricted", "suspended", "softDeleted", "hardDeleted"].includes(status)
+          ? user
+          : null;
+      },
+      // A refresh token was used twice: someone copied it. That sign-in is now revoked everywhere.
+      onReuse: (row) =>
+        logActivity({
+          user: row.user,
+          userType: "user",
+          action: "Security Alert",
+          detail: "A reused refresh token was detected; the sign-in was revoked",
+          module: "auth",
+          metadata: { ip: req.ip, deviceId: row.deviceId, userAgent: req.get("user-agent") },
+        }),
+    });
+    if (result.error) {
+      if (result.error.status === 401) clearRefreshCookie(res);
+      return sendResponse({
+        res,
+        statusCode: result.error.status,
+        translationKey: result.error.key,
+      });
+    }
+    return sendResponse({
+      res,
+      statusCode: 200,
+      translationKey: "token_refreshed",
+      data: { token: result.accessToken },
+    });
+  } catch (error) {
+    return sendResponse({
+      res,
+      statusCode: 500,
+      translationKey: "internal_server",
+    });
+  }
+};
+
 module.exports = {
+  refresh,
   register,
   login,
   getMe,

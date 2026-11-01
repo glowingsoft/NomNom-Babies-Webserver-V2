@@ -11,12 +11,21 @@ const {
   FONT_SIZES,
 } = require("./constants");
 
-const { drawHeader, ensureSpace, sectionTitle } = require("./layout");
-const { chip, drawDivider } = require("./helpers");
+const {
+  drawHeader,
+  ensureSpace,
+  addFooters,
+  sectionTitle,
+} = require("./layout");
+const { getLogo } = require("./logo");
+const { chip, drawCheckbox, drawDivider } = require("./helpers");
 
-const generateGroceryPdf = (data) => {
+const generateGroceryPdf = async (data) => {
+  const logo = await getLogo();
+
   return new Promise((resolve) => {
-    const doc = new PDFDocument({ margin: MARGIN, size: "A4" });
+    const doc = new PDFDocument({ margin: MARGIN, size: "A4", bufferPages: true });
+    doc._pdfLogo = logo ? doc.openImage(logo) : null;
 
     const buffers = [];
     doc.on("data", buffers.push.bind(buffers));
@@ -50,21 +59,21 @@ const generateGroceryPdf = (data) => {
       ensureSpace(doc, 65);
 
       const y = doc.y;
-      const box = item.checked ? "\u2611" : "\u2610";
-
       doc.roundedRect(50, y, CONTENT_WIDTH + 10, 55, 5).stroke(LIGHT);
 
       doc
         .font("Helvetica-Bold")
         .fontSize(FONT_SIZES.label + 1)
         .fillColor(DARK)
-        .text(`${box} ${item.name}`, 65, y + 10);
+        .text(item.name, 88, y + 10);
+
+      drawCheckbox(doc, 65, y + 10, item.checked);
 
       doc
         .font("Helvetica")
         .fontSize(FONT_SIZES.body)
         .fillColor(GRAY)
-        .text(`Quantity: ${item.quantity}`, 80, y + 28);
+        .text(`Quantity: ${item.quantity}`, 88, y + 28);
 
       doc.text(`Category: ${item.category}`, 250, y + 28);
 
@@ -95,6 +104,7 @@ const generateGroceryPdf = (data) => {
 
       doc.moveDown();
     });
+    addFooters(doc);
     doc.end();
   });
 };

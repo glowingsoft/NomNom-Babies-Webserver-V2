@@ -22,13 +22,11 @@ const createRecipeRateLimiter = createRateLimiter("createRecipe", 15, 15);
 const updateRecipeRateLimiter = createRateLimiter("updateRecipe", 15, 15);
 const deleteRecipeRateLimiter = createRateLimiter("deleteRecipe", 15, 15);
 
-// PUBLIC (logged-in users)
 router.get("/", auth, getRecipes);
 router.get("/baby", auth, getBabyRecipes);
 router.get("/cultural-picks", auth, getCustomCulturalPicks);
 router.get("/:id", auth, getRecipeById);
 
-// CONTENT ADMIN
 router.get("/admin/all", auth, roleMiddleware(["admin"]), adminGetRecipes);
 router.post(
   "/admin",

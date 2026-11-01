@@ -1,3 +1,4 @@
+const { statusCounts } = require("@utils/statusCounts");
 const Country = require("@models/Country");
 const Recipe = require("@models/Recipe");
 const { User } = require("@models/UserModel");
@@ -16,7 +17,7 @@ const getCountries = async (req, res) => {
     const [countries, totalCountries] = await Promise.all([
       Country.find({ isEnabled: true })
         .sort({ name: 1 })
-        .select("name signatureFoods")
+        .select("name code signatureFoods")
         .skip((page - 1) * limit)
         .limit(limit),
       Country.countDocuments({ isEnabled: true }),
@@ -69,14 +70,12 @@ const getCountryById = async (req, res) => {
   }
 };
 
-// Select up to 2 countries (logged-in user)
 const selectCountries = async (req, res) => {
   try {
     if (!validateParams(req, res, { rawData: ["countryIds"] })) return;
 
     const { countryIds } = req.body;
 
-    // Must be an array
     if (!Array.isArray(countryIds)) {
       return sendResponse({
         res,
@@ -85,7 +84,6 @@ const selectCountries = async (req, res) => {
       });
     }
 
-    // Max 2 countries
     if (countryIds.length > 2) {
       return sendResponse({
         res,
@@ -94,7 +92,6 @@ const selectCountries = async (req, res) => {
       });
     }
 
-    // Validate all IDs are valid ObjectIds
     const mongoose = require("mongoose");
     const allValid = countryIds.every((id) =>
       mongoose.Types.ObjectId.isValid(id),
@@ -107,11 +104,10 @@ const selectCountries = async (req, res) => {
       });
     }
 
-    // Ensure all countries exist and are enabled
     const countries = await Country.find({
       _id: { $in: countryIds },
       isEnabled: true,
-    }).select("name signatureFoods");
+    }).select("name code signatureFoods");
 
     if (countries.length !== countryIds.length) {
       return sendResponse({
@@ -121,7 +117,6 @@ const selectCountries = async (req, res) => {
       });
     }
 
-    // Save to user
     const user = await User.findByIdAndUpdate(
       req.user._id,
       {
@@ -129,7 +124,7 @@ const selectCountries = async (req, res) => {
         "onboarding.completed": true,
       },
       { new: true },
-    ).populate("onboarding.selectedCountries", "_id name signatureFoods");
+    ).populate("onboarding.selectedCountries", "_id name code signatureFoods");
 
     void logActivity({
       user: req.user._id,
@@ -450,7 +445,12 @@ const adminGetCountries = async (req, res) => {
       Country.countDocuments(query),
     ]);
 
-    const meta = generateMeta(page, limit, totalCountries);
+    const counts = await statusCounts(Country, {
+      statuses: ["active", "review", "disabled"],
+      defaultStatus: "active",
+    });
+
+    const meta = { ...generateMeta(page, limit, totalCountries), counts };
 
     return sendResponse({
       res,

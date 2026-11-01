@@ -1,5 +1,10 @@
 const express = require("express");
+const auth = require("../../middlewares/authMiddleware");
+const roleMiddleware = require("../../middlewares/roleMiddleware");
 const router = express.Router();
+// Every admin API requires a signed-in admin. Enforced here once, so a route can't be exposed by
+// forgetting a per-route check (support tickets and dashboard stats were readable by any app user).
+router.use(auth, roleMiddleware(["admin"]));
 
 const bulkInsertRoutes = require("./dbRoutes.js");
 const adminSettingsRoutes = require("./settingsRoutes.js");
@@ -17,7 +22,6 @@ router.use("/languages", languageRoutes);
 router.use("/admin-panel", adminPanelRoutes);
 router.use("/activities", activityRoutes);
 router.use("/support", supportRoutes);
-//db utils routes
 router.use("/util", bulkInsertRoutes);
 
 module.exports = router;

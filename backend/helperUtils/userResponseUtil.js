@@ -1,5 +1,3 @@
-// helperUtils/userResponseUtil.js
-
 const { convertUtcToTimezone } = require("./responseUtil");
 const { getFullImageUrl } = require("@utils/imageHelper");
 
@@ -14,7 +12,6 @@ const formatUserResponse = (
     pIcon = userObject.profileIcon;
   }
 
-  // Attach base URL to profileIcon
   if (pIcon) {
     pIcon = getFullImageUrl(pIcon);
   }
@@ -51,7 +48,6 @@ const formatUserResponse = (
     },
   };
 
-  // Append metadata
   response.metadata = {
     timezone: userObject.timezone,
     createdAt: userObject.createdAt,
@@ -59,7 +55,6 @@ const formatUserResponse = (
     __v: userObject.__v,
   };
 
-  // Include otpInfo only in development environment
   let otpExpLocalTz;
   if (userObject.otpInfo && userObject.otpInfo.otpExpires) {
     otpExpLocalTz = convertUtcToTimezone(
@@ -74,16 +69,12 @@ const formatUserResponse = (
   if (userObject.resetToken) {
     response.resetToken = userObject.resetToken;
   }
-  // Return the structured response with token
-  // Append token only if it's not null
   if (token) {
     response.token = token;
   }
 
-  // Determine which objects to include or exclude in the final response
   let finalResponse = response;
 
-  // Include specific fields if specified
   if (includeFields.length > 0) {
     finalResponse = {};
     includeFields.forEach((field) => {
@@ -93,7 +84,6 @@ const formatUserResponse = (
     });
   }
 
-  // Exclude specific fields if specified
   if (excludeFields.length > 0) {
     excludeFields.forEach((fieldPath) => {
       const [mainField, subField] = fieldPath.split(".");
@@ -108,7 +98,6 @@ const formatUserResponse = (
 
     return finalResponse;
   } else {
-    // Include all fields
     return response;
   }
 };

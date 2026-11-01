@@ -16,12 +16,9 @@ const createLimiter = createRateLimiter("createSubscription", 15, 15);
 const updateLimiter = createRateLimiter("updateSubscription", 15, 15);
 const deleteLimiter = createRateLimiter("deleteSubscription", 15, 15);
 
-// PUBLIC
 router.get("/", auth, getSubscriptions);
 
 router.get("/:subscriptionId", auth, getSubscriptionDetail);
-
-// ADMIN
 
 router.post(
   "/admin/",

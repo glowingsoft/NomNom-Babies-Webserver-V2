@@ -1,21 +1,19 @@
-// security.js
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const hpp = require("hpp");
 const cors = require("cors");
 const compression = require("compression");
 const express = require("express");
-const { isDev, connectSrc } = require("@config/origins");
+const { isDev, connectSrc, isAllowedOrigin } = require("@config/origins");
 const securityMiddleware = (app, options = {}) => {
   const {
-    allowedOrigins = [], // CORS allowed origins
-    adminIPWhitelist = [], // IP whitelist for admin routes e.g "/api/admin" //  ["127.0.0.1", "203.0.113.42"], // Example whitelist
-    maxRequestSize = "10mb", // Max request size for body parser
-    rateLimitWindow = 15 * 60 * 1000, // 15 minutes for rate limiting
-    rateLimitMax = 200, // limit each IP to 200 requests per windowMs
+    allowedOrigins = [],
+    adminIPWhitelist = [],
+    maxRequestSize = "10mb",
+    rateLimitWindow = 15 * 60 * 1000,
+    rateLimitMax = 1000,
   } = options;
 
-  // Security headers with Helmet
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -35,16 +33,14 @@ const securityMiddleware = (app, options = {}) => {
     })
   );
 
-  // Prevent HTTP Parameter Pollution
   app.use(hpp());
 
-  // Enable GZIP compression
   app.use(compression());
 
-  // Rate Limiting
   const limiter = rateLimit({
     windowMs: rateLimitWindow,
     max: rateLimitMax,
+    skip: (req) => req.method === "OPTIONS" || req.path.startsWith("/api/media/"),
     message: {
       status: 429,
       message: "Too many requests from this IP, please try again later",
@@ -52,34 +48,22 @@ const securityMiddleware = (app, options = {}) => {
   });
   app.use(limiter);
 
-  // Body parser limits (Express)
   app.use(express.json({ limit: maxRequestSize }));
   app.use(express.urlencoded({ extended: true, limit: maxRequestSize }));
 
-  // CORS configuration
   const corsOptions = {
+    // Unknown origins get no CORS headers, so browsers block the response (and never send cookies).
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-
-      if (isDev) {
-        return callback(null, true);
-      }
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      return callback(new Error("CORS Forbidden"), false);
+      callback(null, isAllowedOrigin(origin));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-admin-access-token"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-admin-access-token", "Accept-Language", "X-Client"],
   };
 
   app.use(cors(corsOptions));
   app.options("*", cors(corsOptions));
 
-  // Optional JSON error for CORS
   app.use((err, req, res, next) => {
     if (err && err.message === "CORS Forbidden") {
       return res.status(403).json({ message: "CORS Forbidden" });
@@ -87,9 +71,6 @@ const securityMiddleware = (app, options = {}) => {
     next();
   });
 
-
-
-  // Optional: Admin IP whitelist for sensitive routes
   if (adminIPWhitelist.length > 0) {
     app.use("/api/admin", (req, res, next) => {
       const clientIP =
@@ -101,7 +82,6 @@ const securityMiddleware = (app, options = {}) => {
     });
   }
 
-  // Optional: Log suspicious requests
   app.use((req, res, next) => {
     if (!req.ip || !req.method || !req.path) {
       console.warn("Suspicious request detected:", req.ip, req.method, req.path);

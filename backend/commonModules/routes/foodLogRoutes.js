@@ -12,7 +12,6 @@ const toggleLimiter = createRateLimiter("toggleFoodLogCompletion", 30, 15);
 
 const router = express.Router();
 
-// APP
 router.get("/", auth, getFoodLogs);
 
 router.post("/", auth, createLimiter, createFoodLog);

@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 
-// Define the NotificationTypes enum
 const NotificationTypes = {
   NEW_MESSAGE: "newMessage",
   SYSTEM: "system",
@@ -9,29 +8,29 @@ const NotificationTypes = {
   NEW_BABY: "newBaby",
 };
 
-// Define the NotificationSchema
 const NotificationSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: Object.values(NotificationTypes), // Reference the notification types enum
+    enum: Object.values(NotificationTypes),
     required: true,
   },
   subjectId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User", // Reference to the sender (optional)
+    ref: "User",
     default: null,
   },
+  // What the notification is about (e.g. a Baby); empty for system / test notifications.
   objectId: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true,
+    default: null,
   },
   objectType: {
     type: String,
-    required: true,
+    default: "System",
   },
   receiverId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User", // Reference to the user for whom this notification is intended
+    ref: "User",
     required: true,
   },
   title: {
@@ -61,13 +60,11 @@ const NotificationSchema = new mongoose.Schema({
   },
 });
 
-// Automatically update `updatedAt` field on modification
 NotificationSchema.pre("save", function (next) {
   this.updatedAt = Date.now();
   next();
 });
 
-// Export both Notification model and NotificationTypes enum
 const NotificationExp = mongoose.model("Notification", NotificationSchema);
 module.exports = {
   NotificationExp,

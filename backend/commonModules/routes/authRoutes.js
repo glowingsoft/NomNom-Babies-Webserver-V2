@@ -12,24 +12,27 @@ const {
   socialAuth,
   forgetPassword,
   changePassword,
+  refresh,
 } = require("../controllers/authController");
+const { attachSessionToResponse } = require("@utils/authTokens");
 const createRateLimiter = require("@utils/rateLimiter");
 
 const router = express.Router();
-// Create a rate limiter for signup routes
-// Define rate limiters
-const signupRateLimiter = createRateLimiter("register", 15, 15); // 15 requests per 15 minutes
-const loginRateLimiter = createRateLimiter("login", 15, 15); // 15 requests per 15 minute
-const generateOtpRateLimiter = createRateLimiter("forgotPassword", 15, 15); // 15 requests per 15 minutes
-const resendOtpRateLimiter = createRateLimiter("resendOtp", 15, 15); // 15 requests per 15 minutes
-const verifyOtpRateLimiter = createRateLimiter("verifyOtp", 15, 15); // 10 requests per 10 minutes
+// Sign-in responses carry the refresh token (apps) / set its cookie (web) — see helperUtils/authTokens.js.
+router.use(attachSessionToResponse);
+const refreshRateLimiter = createRateLimiter("refreshToken", 15, 120, { strict: true });
+const signupRateLimiter = createRateLimiter("register", 15, 15, { strict: true });
+const loginRateLimiter = createRateLimiter("login", 15, 15, { strict: true });
+const generateOtpRateLimiter = createRateLimiter("forgotPassword", 15, 15, { strict: true });
+const resendOtpRateLimiter = createRateLimiter("resendOtp", 15, 15, { strict: true });
+const verifyOtpRateLimiter = createRateLimiter("verifyOtp", 15, 15, { strict: true });
 
-const resetPasswordRateLimiter = createRateLimiter("resetPassword", 15, 15); // 15 requests per 15 minutes
-const changePasswordRateLimiter = createRateLimiter("changePassword", 15, 15); // 15 requests per 15 minutes
+const resetPasswordRateLimiter = createRateLimiter("resetPassword", 15, 15, { strict: true });
+const changePasswordRateLimiter = createRateLimiter("changePassword", 15, 15, { strict: true });
 
-// Apply rate limiters to routes
 router.post("/register", signupRateLimiter, register);
 router.post("/login", loginRateLimiter, login);
+router.post("/refresh", refreshRateLimiter, refresh);
 router.post("/resend-otp/email", resendOtpRateLimiter, (req, res, next) => {
   req.body.type = "email";
   generateOtp(req, res, next);
@@ -58,6 +61,7 @@ router.get("/me", auth, (req, res) => {
     data: req.user,
   });
 });
-router.post("/social-auth", socialAuth);
+const socialAuthRateLimiter = createRateLimiter("socialAuth", 15, 30, { strict: true });
+router.post("/social-auth", socialAuthRateLimiter, socialAuth);
 
 module.exports = router;

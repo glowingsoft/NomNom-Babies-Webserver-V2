@@ -15,8 +15,12 @@ const recipeSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    views: {
+      type: Number,
+      default: 0,
+    },
     prepTime: {
-      type: Number, // in minutes
+      type: Number,
       required: true,
     },
     country: {
@@ -69,6 +73,7 @@ const recipeSchema = new mongoose.Schema(
     method: [
       {
         step: { type: Number, required: true },
+        title: { type: String, default: "", trim: true },
         instruction: { type: String, required: true },
       },
     ],

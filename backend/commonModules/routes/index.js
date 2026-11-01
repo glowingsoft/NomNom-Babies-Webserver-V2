@@ -21,6 +21,7 @@ const foodLogRoutes = require("./foodLogRoutes.js");
 const subscriptionRoutes = require("./subscriptionRoutes.js");
 const downloadPdfRoutes = require("./downloadPdfRoutes.js");
 
+router.use("/media", require("./mediaRoutes.js"));
 router.use("/upload", uploadRoutes);
 router.use("/upload/s3", uploads3Routes);
 router.use("/baby-stages", babyStageRoutes);
@@ -39,4 +40,5 @@ router.use("/reminders", reminderRoutes);
 router.use("/food-logs", foodLogRoutes);
 router.use("/subscription", subscriptionRoutes);
 router.use("/download-pdf", downloadPdfRoutes);
+router.use("/account-deletion", require("./accountDeletionRoutes.js"));
 module.exports = router;

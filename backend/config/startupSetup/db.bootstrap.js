@@ -1,12 +1,8 @@
-/**
- * DB Bootstrap – versioned, safe, internal-only admin creation
- */
-
 const mongoose = require("mongoose");
 const { User } = require("@models/UserModel");
 const AdminSettings = require("@models/Settings");
 
-const BOOTSTRAP_VERSION = process.env.BOOTSTRAP_VERSION || 1; // Increment this to trigger bootstrap again
+const BOOTSTRAP_VERSION = process.env.BOOTSTRAP_VERSION || 1;
 const TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 const bootstrapSchema = new mongoose.Schema(
@@ -41,7 +37,6 @@ async function runDBBootstrap() {
       return;
     }
 
-    // Admin Settings
     if (!(await AdminSettings.findOne())) {
       await AdminSettings.updateOne(
         { key: "aboutUs" },
@@ -81,7 +76,6 @@ async function runDBBootstrap() {
       console.log("✅ Admin settings created");
     }
 
-    // Bootstrap Users
     for (const { envEmail, envPassword, name, userType } of BOOTSTRAP_USERS) {
       const email = process.env[envEmail];
       const password = process.env[envPassword];
@@ -110,7 +104,6 @@ async function runDBBootstrap() {
       }
     }
 
-    // Mark bootstrap complete
     await Bootstrap.findOneAndUpdate(
       {},
       { $set: { version: BOOTSTRAP_VERSION } },

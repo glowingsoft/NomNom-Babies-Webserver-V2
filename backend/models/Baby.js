@@ -16,6 +16,13 @@ const babySchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    // Who looks after this baby (shown with the baby on Home, e.g. "Good morning, Sarah").
+    parentName: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 50,
+    },
     babyStage: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "BabyStage",

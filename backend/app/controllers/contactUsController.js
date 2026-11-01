@@ -1,4 +1,3 @@
-// controllers/contactUsController.js
 const ContactUs = require("@models/ContactUs");
 const {
   sendResponse,
@@ -10,7 +9,6 @@ const validator = require("validator");
 const { sendEmailViaBrevo } = require("@utils/emailUtil");
 const { config } = require("dotenv");
 
-// Create a new contact request
 const createContactRequest = async (req, res) => {
   const { name, email, phoneNumber, description } = req.body;
 
@@ -22,7 +20,6 @@ const createContactRequest = async (req, res) => {
     return;
   }
 
-  // Validate phone number format
   if (
     phoneNumber &&
     !validator.isMobilePhone(phoneNumber, "any", { strictMode: true })
@@ -40,12 +37,10 @@ const createContactRequest = async (req, res) => {
       email,
       phoneNumber,
       description,
-      status: "pending", // Set the default status
+      status: "pending",
     });
 
-    // Send email within the transaction
     const subject = "Contact Us Request by " + name;
-    //append phone number with description if available
     const mDescription = phoneNumber
       ? `${description} \n Name: ${name} \n Email: ${email} \n Phone Number: ${phoneNumber}`
       : `${description} \n Name: ${name} \n Email: ${email}`;
@@ -54,9 +49,6 @@ const createContactRequest = async (req, res) => {
 
     await Promise.all([
       contactRequest.save(),
-      //  sendEmailViaBrevo([supportEmail], subject, mDescription, {
-      // isHtml: false,
-      // }),
     ]);
 
     return sendResponse({
@@ -70,11 +62,10 @@ const createContactRequest = async (req, res) => {
       const errorMessages = Object.values(error.errors).map(
         (err) => err.message
       );
-      // Use the first error message key for translation
       return sendResponse({
         res,
         statusCode: 400,
-        translationKey: errorMessages[0], // Directly use the error key in the translationKey
+        translationKey: errorMessages[0],
         error: error,
       });
     }
@@ -87,7 +78,6 @@ const createContactRequest = async (req, res) => {
     });
   }
 };
-
 
 module.exports = {
   createContactRequest,

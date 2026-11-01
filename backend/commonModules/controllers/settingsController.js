@@ -11,7 +11,6 @@ const getSettingByKey = async (key) => {
   return await AdminSettings.findOne({ key });
 };
 
-// Get Terms and Conditions
 const getTermsAndConditions = async (req, res) => {
   try {
     const settings = await getSettingByKey("termsConditions");
@@ -38,7 +37,6 @@ const getTermsAndConditions = async (req, res) => {
   }
 };
 
-// Get About Us
 const getAboutUs = async (req, res) => {
   try {
     const settings = await getSettingByKey("aboutUs");
@@ -65,7 +63,6 @@ const getAboutUs = async (req, res) => {
   }
 };
 
-// Get Privacy Policy
 const getPrivacyPolicy = async (req, res) => {
   try {
     const settings = await getSettingByKey("privacyPolicy");
@@ -92,15 +89,12 @@ const getPrivacyPolicy = async (req, res) => {
   }
 };
 
-// Get FAQs
 const getFaqs = async (req, res) => {
   try {
     const { page, limit } = parsePaginationParams(req);
-    const { keyword } = req.query; // Get keyword from query
+    const { keyword } = req.query;
 
-    // Initialize query object with base condition
     let queryConditions = {};
-    // Apply keyword search on both `name` and `anonymousName` if keyword is provided
     if (keyword && keyword.trim() !== "") {
       queryConditions.$or = [
         { question: { $regex: keyword, $options: "i" } },
@@ -134,7 +128,6 @@ const getFaqs = async (req, res) => {
   }
 };
 
-// Update About-Us
 const updateAboutUs = async (req, res) => {
   try {
     const { title, content } = req.body;
@@ -171,7 +164,6 @@ const updateAboutUs = async (req, res) => {
   }
 };
 
-// Update Privacy Policy
 const updatePrivacyPolicy = async (req, res) => {
   try {
     const { title, content } = req.body;
@@ -208,7 +200,6 @@ const updatePrivacyPolicy = async (req, res) => {
   }
 };
 
-// Update Terms and Conditions
 const updateTermsAndConditions = async (req, res) => {
   try {
     const { title, content } = req.body;
@@ -245,7 +236,6 @@ const updateTermsAndConditions = async (req, res) => {
   }
 };
 
-// Update FAQs
 const updateFaqs = async (req, res) => {
   try {
     const faq = await Faq.findByIdAndUpdate(req.params.id, req.body, {
@@ -278,7 +268,6 @@ const updateFaqs = async (req, res) => {
   }
 };
 
-// Delete FAQs
 const deleteFaqs = async (req, res) => {
   try {
     const faq = await Faq.findByIdAndDelete(req.params.id);
@@ -311,7 +300,6 @@ const deleteFaqs = async (req, res) => {
   }
 };
 
-// Create FAQs
 const createFaqs = async (req, res) => {
   try {
     const { question, answer } = req.body;

@@ -5,15 +5,18 @@ const createRateLimiter = require("../../helperUtils/rateLimiter");
 const {
     getNotifications,
     readNotification,
+    sendTestNotification,
 } = require("../../commonModules/controllers/notificationsController");
 
 const router = express.Router();
 const notificationsRateLimiter = createRateLimiter("notifications", 10, 50);
 
-// Route to get all notifications with pagination
 router.get("/", notificationsRateLimiter, auth, getNotifications);
 
-// Route to mark a notification as read by ID
 router.put("/:id/read", notificationsRateLimiter, auth, readNotification);
+
+if (process.env.NODE_ENV !== "prod") {
+    router.post("/test", notificationsRateLimiter, auth, sendTestNotification);
+}
 
 module.exports = router;

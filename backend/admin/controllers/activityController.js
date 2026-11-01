@@ -1,4 +1,7 @@
 const Activity = require("@models/Activity");
+const { User } = require("@models/UserModel");
+const Baby = require("@models/Baby");
+const { lookupOne } = require("@utils/aggregationUtil");
 const {
   generateMeta,
   parsePaginationParams,
@@ -23,13 +26,36 @@ const getRecentActivities = async (req, res) => {
       ];
     }
 
+    const castedQuery = Activity.find(query).cast(Activity);
+
     const [activities, totalRecords] = await Promise.all([
-      Activity.find(query)
-        .populate("user", "_id name userType")
-        .populate("baby", "_id name")
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+      Activity.aggregate([
+        { $match: castedQuery },
+        { $sort: { createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...lookupOne({
+          from: User.collection.name,
+          field: "user",
+          fields: ["_id", "name", "userType"],
+        }),
+        ...lookupOne({
+          from: Baby.collection.name,
+          field: "baby",
+          fields: ["_id", "name"],
+        }),
+        {
+          $addFields: {
+            metadata: {
+              $cond: [
+                { $eq: [{ $type: "$metadata" }, "missing"] },
+                {},
+                "$metadata",
+              ],
+            },
+          },
+        },
+      ]),
       Activity.countDocuments(query),
     ]);
 

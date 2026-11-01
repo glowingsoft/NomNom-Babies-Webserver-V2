@@ -1,4 +1,3 @@
-// models/SupportRequest.js
 const mongoose = require('mongoose');
 const validator = require('validator');
 
@@ -10,7 +9,7 @@ const supportRequestSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: [true, 'email_required'], // Generic error message key
+    required: [true, 'email_required'],
     trim: true,
     validate: {
       validator: function (value) {
@@ -31,7 +30,7 @@ const supportRequestSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'responded', 'resolved', 'closed'],
+    enum: ['pending', 'open', 'responded', 'resolved', 'closed'],
     default: 'pending',
   },
 }, {

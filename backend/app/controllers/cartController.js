@@ -1,5 +1,7 @@
+const mongoose = require("mongoose");
 const Recipe = require("@models/Recipe");
-const { getActiveCart } = require("@utils/cartUtil");
+const GroceryList = require("@models/GroceryList");
+const { getActiveCart, mirrorCartToGrocery } = require("@utils/cartUtil");
 const {
   generateMeta,
   parsePaginationParams,
@@ -233,6 +235,7 @@ const toggleIngredient = async (req, res) => {
     ingredient.checked = !ingredient.checked;
 
     await cart.save();
+    await mirrorCartToGrocery(cart, req.params.recipeId);
 
     return sendResponse({
       res,
@@ -343,6 +346,7 @@ const markAllDone = async (req, res) => {
     });
 
     await cart.save();
+    await mirrorCartToGrocery(cart, req.params.recipeId);
 
     return sendResponse({
       res,
@@ -383,6 +387,11 @@ const deleteRecipeCart = async (req, res) => {
     );
 
     await cart.save();
+    // Remove it from the grocery list too, otherwise getActiveCart copies it back on the next read.
+    await GroceryList.updateOne(
+      { user: req.user._id, baby: cart.baby },
+      { $pull: { recipes: { recipe: req.params.recipeId } } },
+    );
 
     return sendResponse({
       res,

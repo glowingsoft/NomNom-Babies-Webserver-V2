@@ -4,7 +4,7 @@ const languageSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: [true, "language_title_required"], // Custom error message key
+      required: [true, "language_title_required"],
     },
     image: {
       type: String,
@@ -22,16 +22,29 @@ const languageSchema = new mongoose.Schema(
     },
     code: {
       type: String,
-      required: [true, "language_code_required"], // Custom error message key
+      required: [true, "language_code_required"],
       unique: true,
     },
     active: {
       type: Boolean,
       default: true,
     },
+    // App UI copy for this language ({ key: text }). English holds the full key list the app uses;
+    // other languages must translate every key before they can be activated. Loaded only on request.
+    translations: {
+      type: Object,
+      default: {},
+      select: false,
+    },
+    // Bumped on every translations change so the app re-downloads only when something changed.
+    translationsVersion: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,
+    minimize: false,
     toJSON: {
       transform: function (doc, ret) {
         delete ret.createdAt;

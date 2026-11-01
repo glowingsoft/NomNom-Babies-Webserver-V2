@@ -1,3 +1,4 @@
+const { statusCounts } = require("@utils/statusCounts");
 const BabyStage = require("@models/BabyStage");
 const Baby = require("@models/Baby");
 const { User } = require("@models/UserModel");
@@ -10,17 +11,14 @@ const {
 const Recipe = require("@models/Recipe");
 const { logActivity } = require("@utils/activityUtil");
 
-// ─── PUBLIC ───────────────────────────────────────────────────────────────────
-
-// Get all active baby stages (for the selection screen)
 const getBabyStages = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
 
   try {
     const [stages, totalStages] = await Promise.all([
       BabyStage.find({ active: true })
-        .sort({ createdAt: 1 })
-        .select("title features")
+        .sort({ sortOrder: 1, createdAt: 1 })
+        .select("title features sortOrder")
         .skip((page - 1) * limit)
         .limit(limit),
 
@@ -46,7 +44,6 @@ const getBabyStages = async (req, res) => {
   }
 };
 
-// Get a single baby stage by ID
 const getBabyStageById = async (req, res) => {
   try {
     const validationOptions = {
@@ -82,7 +79,6 @@ const getBabyStageById = async (req, res) => {
   }
 };
 
-// Select a baby stage (logged-in user)
 const selectBabyStage = async (req, res) => {
   try {
     const validationOptions = {
@@ -151,9 +147,6 @@ const selectBabyStage = async (req, res) => {
   }
 };
 
-// ─── ADMIN ────────────────────────────────────────────────────────────────────
-
-// Get all baby stages with pagination (admin)
 const adminGetBabyStages = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
 
@@ -189,7 +182,7 @@ const adminGetBabyStages = async (req, res) => {
   try {
     const [stages, totalStages] = await Promise.all([
       BabyStage.find(filters)
-        .sort({ createdAt: 1 })
+        .sort({ sortOrder: 1, createdAt: 1 })
         .skip((page - 1) * limit)
         .limit(limit),
       BabyStage.countDocuments(filters),
@@ -228,7 +221,13 @@ const adminGetBabyStages = async (req, res) => {
       recipes: recipeMap[stage._id.toString()] || 0,
     }));
 
-    const meta = generateMeta(page, limit, totalStages);
+    const counts = await statusCounts(BabyStage, {
+      path: "active",
+      statuses: ["active", "disabled"],
+      booleanMap: { true: "active", false: "disabled" },
+    });
+
+    const meta = { ...generateMeta(page, limit, totalStages), counts };
 
     return sendResponse({
       res,
@@ -247,9 +246,8 @@ const adminGetBabyStages = async (req, res) => {
   }
 };
 
-// Create a new baby stage
 const createBabyStage = async (req, res) => {
-  const { title, features = [] } = req.body;
+  const { title, features = [], sortOrder = 0 } = req.body;
 
   try {
     const validationOptions = {
@@ -272,7 +270,7 @@ const createBabyStage = async (req, res) => {
       });
     }
 
-    const stage = new BabyStage({ title: title.trim(), features });
+    const stage = new BabyStage({ title: title.trim(), features, sortOrder });
     await stage.save();
 
     void logActivity({
@@ -304,9 +302,8 @@ const createBabyStage = async (req, res) => {
   }
 };
 
-// Update an existing baby stage
 const updateBabyStage = async (req, res) => {
-  const { title, features, active } = req.body;
+  const { title, features, active, sortOrder } = req.body;
 
   try {
     const validationOptions = {
@@ -331,6 +328,10 @@ const updateBabyStage = async (req, res) => {
 
     if (features !== undefined) {
       stage.features = features;
+    }
+
+    if (sortOrder !== undefined) {
+      stage.sortOrder = sortOrder;
     }
 
     if (active !== undefined) {
@@ -368,7 +369,6 @@ const updateBabyStage = async (req, res) => {
   }
 };
 
-// Delete a baby stage
 const deleteBabyStage = async (req, res) => {
   try {
     const validationOptions = {

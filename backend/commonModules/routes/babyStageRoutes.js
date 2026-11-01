@@ -1,6 +1,6 @@
 const express = require("express");
 const auth = require("../../middlewares/authMiddleware");
-const { authorizeRoles } = require("../../middlewares/roleMiddleware");
+const roleMiddleware = require("../../middlewares/roleMiddleware");
 const createRateLimiter = require("@utils/rateLimiter");
 
 const {
@@ -15,41 +15,19 @@ const {
 
 const router = express.Router();
 
-// Define rate limiters
-const createStageRateLimiter = createRateLimiter("createBabyStage", 15, 15); // 15 requests per 15 minutes
-const updateStageRateLimiter = createRateLimiter("updateBabyStage", 15, 15); // 15 requests per 15 minutes
-const deleteStageRateLimiter = createRateLimiter("deleteBabyStage", 15, 15); // 15 requests per 15 minutes
+const createStageRateLimiter = createRateLimiter("createBabyStage", 15, 15);
+const updateStageRateLimiter = createRateLimiter("updateBabyStage", 15, 15);
+const deleteStageRateLimiter = createRateLimiter("deleteBabyStage", 15, 15);
 
-// PUBLIC (any logged-in user)
 router.get("/", auth, getBabyStages);
 router.get("/:id", auth, getBabyStageById);
 router.post("/select", auth, selectBabyStage);
 
-//  CONTENT ADMIN + SUPER ADMIN
-router.get(
-  "/admin/all",
-  auth,
-  /**authorizeRoles("contentAdmin", "superAdmin"),**/ adminGetBabyStages,
-);
-router.post(
-  "/",
-  auth,
-  /**authorizeRoles("contentAdmin", "superAdmin"),**/ createStageRateLimiter,
-  createBabyStage,
-);
-router.put(
-  "/:id",
-  auth,
-  /**authorizeRoles("contentAdmin", "superAdmin"),**/ updateStageRateLimiter,
-  updateBabyStage,
-);
-
-// SUPER ADMIN ONLY
-router.delete(
-  "/:id",
-  auth,
-  /**authorizeRoles("superAdmin"),**/ deleteStageRateLimiter,
-  deleteBabyStage,
-);
+// Managing stages is admin-only (app users only read and select them).
+const adminOnly = roleMiddleware(["admin"]);
+router.get("/admin/all", auth, adminOnly, adminGetBabyStages);
+router.post("/", auth, adminOnly, createStageRateLimiter, createBabyStage);
+router.put("/:id", auth, adminOnly, updateStageRateLimiter, updateBabyStage);
+router.delete("/:id", auth, adminOnly, deleteStageRateLimiter, deleteBabyStage);
 
 module.exports = router;

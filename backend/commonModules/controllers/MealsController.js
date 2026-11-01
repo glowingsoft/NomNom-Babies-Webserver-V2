@@ -9,11 +9,7 @@ const {
 } = require("@utils/responseUtil");
 
 const { logActivity } = require("@utils/activityUtil");
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ADMIN
-// ─────────────────────────────────────────────────────────────────────────────
-
+const { statusCounts } = require("@utils/statusCounts");
 
 const adminGetMeals = async (req, res) => {
   const { page, limit } = parsePaginationParams(req);
@@ -27,7 +23,6 @@ const adminGetMeals = async (req, res) => {
 
     const matchQuery = {};
 
-    // Search by meal name
     if (search) {
       matchQuery.name = {
         $regex: search,
@@ -35,12 +30,10 @@ const adminGetMeals = async (req, res) => {
       };
     }
 
-    // Filter by status
     if (status) {
       matchQuery.status = status;
     }
 
-    // Filter by active state
     if (isActive !== undefined) {
       matchQuery.isActive =
         isActive === "true" || isActive === true;
@@ -54,7 +47,6 @@ const adminGetMeals = async (req, res) => {
           $match: matchQuery,
         },
 
-        // Match recipes whose mealType references this meal
         {
           $lookup: {
             from: Recipe.collection.name,
@@ -77,7 +69,6 @@ const adminGetMeals = async (req, res) => {
           },
         },
 
-        // Convert lookup result into recipesCount
         {
           $addFields: {
             recipes: {
@@ -91,7 +82,6 @@ const adminGetMeals = async (req, res) => {
           },
         },
 
-        // Don't return internal lookup data
         {
           $project: {
             name: 1,
@@ -122,11 +112,15 @@ const adminGetMeals = async (req, res) => {
       Meals.countDocuments(matchQuery),
     ]);
 
-    const meta = generateMeta(
-      page,
-      limit,
-      totalRecords,
-    );
+    const counts = await statusCounts(Meals, {
+      statuses: ["active", "disabled"],
+      defaultStatus: "active",
+    });
+
+    const meta = {
+      ...generateMeta(page, limit, totalRecords),
+      counts,
+    };
 
     return sendResponse({
       res,
@@ -146,10 +140,6 @@ const adminGetMeals = async (req, res) => {
     });
   }
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CREATE
-// ─────────────────────────────────────────────────────────────────────────────
 
 const createMeal = async (req, res) => {
   try {
@@ -171,7 +161,6 @@ const createMeal = async (req, res) => {
       isActive,
     } = req.body;
 
-    // Validate status
     const allowedStatuses = ["active", "disabled"];
 
     if (status && !allowedStatuses.includes(status)) {
@@ -183,7 +172,6 @@ const createMeal = async (req, res) => {
       });
     }
 
-    // Validate isActive
     if (
       isActive !== undefined &&
       typeof isActive !== "boolean"
@@ -196,7 +184,6 @@ const createMeal = async (req, res) => {
       });
     }
 
-    // Check duplicate name
     const existingMeal = await Meals.findOne({
       name: {
         $regex: `^${name.trim()}$`,
@@ -263,10 +250,6 @@ const createMeal = async (req, res) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UPDATE
-// ─────────────────────────────────────────────────────────────────────────────
-
 const updateMeal = async (req, res) => {
   try {
     if (
@@ -295,10 +278,6 @@ const updateMeal = async (req, res) => {
       isActive,
     } = req.body;
 
-    // ─────────────────────────────────────────────
-    // Validate status
-    // ─────────────────────────────────────────────
-
     if (status !== undefined) {
       const allowedStatuses = [
         "active",
@@ -316,10 +295,6 @@ const updateMeal = async (req, res) => {
       }
     }
 
-    // ─────────────────────────────────────────────
-    // Validate isActive
-    // ─────────────────────────────────────────────
-
     if (
       isActive !== undefined &&
       typeof isActive !== "boolean"
@@ -331,10 +306,6 @@ const updateMeal = async (req, res) => {
         error: "isActive must be a boolean",
       });
     }
-
-    // ─────────────────────────────────────────────
-    // Check duplicate name
-    // ─────────────────────────────────────────────
 
     if (name !== undefined) {
       const existingMeal = await Meals.findOne({
@@ -360,10 +331,6 @@ const updateMeal = async (req, res) => {
       meal.name = name.trim();
     }
 
-    // ─────────────────────────────────────────────
-    // Update fields
-    // ─────────────────────────────────────────────
-
     if (description !== undefined) {
       meal.description = description.trim();
     }
@@ -377,10 +344,6 @@ const updateMeal = async (req, res) => {
     }
 
     await meal.save();
-
-    // ─────────────────────────────────────────────
-    // Get recipes count
-    // ─────────────────────────────────────────────
 
     const recipesCount = await Recipe.countDocuments({
       mealType: meal._id,
@@ -429,9 +392,6 @@ const updateMeal = async (req, res) => {
   }
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DELETE
-// ─────────────────────────────────────────────────────────────────────────────
 const deleteMeal = async (req, res) => {
   try {
     if (
@@ -453,7 +413,6 @@ const deleteMeal = async (req, res) => {
       });
     }
 
-    // Check whether recipes are using this meal type
     const recipesCount = await Recipe.countDocuments({
       mealType: meal._id,
     });
@@ -510,8 +469,6 @@ const deleteMeal = async (req, res) => {
     });
   }
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 module.exports = {
   adminGetMeals,

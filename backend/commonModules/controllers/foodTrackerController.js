@@ -1,5 +1,7 @@
 const FoodTracker = require("@models/FoodTracker");
 const { User } = require("@models/UserModel");
+const Baby = require("@models/Baby");
+const { lookupOne } = require("@utils/aggregationUtil");
 const {
   generateMeta,
   parsePaginationParams,
@@ -123,12 +125,22 @@ const getAllFoodTrackers = async (req, res) => {
     const { page, limit } = parsePaginationParams(req);
 
     const [foodTrackers, totalRecords] = await Promise.all([
-      FoodTracker.find()
-        .populate("baby", "_id name")
-        .populate("user", "_id name email")
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit),
+      FoodTracker.aggregate([
+        { $sort: { createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        ...lookupOne({
+          from: Baby.collection.name,
+          field: "baby",
+          fields: ["_id", "name"],
+        }),
+        ...lookupOne({
+          from: User.collection.name,
+          field: "user",
+          fields: ["_id", { name: "name", default: "" }, "email"],
+        }),
+        { $addFields: { image: { $ifNull: ["$image", ""] } } },
+      ]),
 
       FoodTracker.countDocuments(),
     ]);

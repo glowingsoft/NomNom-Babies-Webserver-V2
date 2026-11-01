@@ -1,17 +1,22 @@
 const isDev = ["dev", "mobileapps"].includes(process.env.NODE_ENV);
 
-const PROD_ORIGINS = [
-  "https://boilerplate.com",
-  "https://www.boilerplate.com",
-  "https://dev.boilerplate.com",
-  "https://www.dev.boilerplate.com",
-  "http://localhost:4003",
-  "https://boilerplate.vercel.app",
-  "http://192.168.13.67:4003"
-];
+// Web origins allowed to call the API with credentials (admin panel / website). Native apps send no Origin.
+const WEB_ORIGINS = (
+  process.env.WEB_ORIGINS || "https://www.nomnombabies.com,https://nomnombabies.com"
+)
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+// Local development: localhost, the Android emulator host and LAN addresses only.
+const DEV_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|10\.0\.2\.2|192\.168\.\d+\.\d+)(:\d+)?$/;
+
+const isAllowedOrigin = (origin) =>
+  !origin || WEB_ORIGINS.includes(origin) || (isDev && DEV_ORIGIN.test(origin));
 
 module.exports = {
   isDev,
-  allowedOrigins: isDev ? [] : PROD_ORIGINS,
-  connectSrc: isDev ? ["*"] : ["'self'", ...PROD_ORIGINS],
+  allowedOrigins: WEB_ORIGINS,
+  isAllowedOrigin,
+  connectSrc: isDev ? ["*"] : ["'self'", ...WEB_ORIGINS],
 };

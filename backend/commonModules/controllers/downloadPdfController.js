@@ -2,6 +2,18 @@ const FeedingSchedule = require("@models/FeedingSchedule");
 const Recipe = require("@models/Recipe");
 const GroceryList = require("@models/GroceryList");
 const Baby = require("@models/Baby");
+const Country = require("@models/Country");
+const BabyStage = require("@models/BabyStage");
+const Nutrition = require("@models/Nutrition");
+const Meals = require("@models/Meals");
+const {
+  lookupOne,
+  lookupMany,
+  recipeDocumentDefaults,
+  groceryRecipeStages,
+  babyPopulateStages,
+  babyDocumentDefaults,
+} = require("@utils/aggregationUtil");
 const { User } = require("@models/UserModel");
 
 const {
@@ -12,8 +24,14 @@ const { generateRecipePdf } = require("@utils/downloadPdf/recipeDetailPdf");
 
 const { generateGroceryPdf } = require("@utils/downloadPdf/groceryListPdf");
 
-const { sendResponse, parsePaginationParams, generateMeta } = require("@utils/responseUtil");
-const { babyPopulate } = require("@utils/babyUtil");
+const {
+  sendResponse,
+  parsePaginationParams,
+  generateMeta,
+  getUserToday,
+  validateParams,
+} = require("@utils/responseUtil");
+const mongoose = require("mongoose");
 const FeedingLog = require("@models/FeedingLog");
 const { savePdf } = require("@utils/downloadPdf/pdfStorage");
 const { logActivity } = require("@utils/activityUtil");
@@ -30,15 +48,26 @@ const downloadFeedingTimeTablePdf = async (req, res) => {
         translationKey: "baby_not_found",
       });
     }
-    const today = new Date().toISOString().split("T")[0];
+    if (!validateParams(req, res, { dateFields: { date: "YYYY-MM-DD" } })) {
+      return;
+    }
+    // ?date=YYYY-MM-DD exports a stored timetable; defaults to the user's today.
+    const today = req.query.date || getUserToday(req.user);
 
-    const baby = await Baby.findById(user.activeBaby).populate(babyPopulate);
+    const baby =
+      (
+        await Baby.aggregate([
+          { $match: { _id: user.activeBaby } },
+          ...babyPopulateStages(),
+          { $addFields: babyDocumentDefaults },
+        ])
+      )[0] ?? null;
 
     const schedules = await FeedingSchedule.find({
       baby: baby._id,
       user: req.user._id,
       date: today,
-    }).sort({ time: 1 });
+    }).sort({ timeMinutes: 1, time: 1 });
 
     const logs = await FeedingLog.find({
       baby: baby._id,
@@ -90,9 +119,9 @@ const downloadFeedingTimeTablePdf = async (req, res) => {
       feedingNotes,
     });
 
-    const relativePath = await savePdf(pdf, `feeding-${baby._id}.pdf`);
+    const relativePath = await savePdf(pdf, `feeding-${baby._id}-${today}.pdf`);
 
-    const pdfUrl = `${req.protocol}://${req.get("host")}${relativePath}`;
+    const pdfUrl = `${req.protocol}://${req.get("host")}/api${relativePath}`;
 
     void logActivity({
       user: req.user._id,
@@ -104,6 +133,7 @@ const downloadFeedingTimeTablePdf = async (req, res) => {
       targetId: baby._id,
       metadata: {
         date: today,
+        pdfPath: relativePath,
         completionRate,
         totalMeals: recommendedToday.length,
       },
@@ -129,10 +159,42 @@ const downloadFeedingTimeTablePdf = async (req, res) => {
 
 const downloadRecipePdf = async (req, res) => {
   try {
-    const recipe = await Recipe.findById(req.params.recipeId)
-      .populate("country", "_id name")
-      .populate("babyStage", "_id title")
-      .populate("nutritionTags", "_id name");
+    const castedQuery = Recipe.find({ _id: req.params.recipeId }).cast(Recipe);
+
+    const [recipe] = await Recipe.aggregate([
+      { $match: castedQuery },
+      { $limit: 1 },
+      ...lookupOne({
+        from: Country.collection.name,
+        field: "country",
+        fields: ["_id", "name"],
+      }),
+      ...lookupOne({
+        from: BabyStage.collection.name,
+        field: "babyStage",
+        fields: ["_id", "title"],
+      }),
+      ...lookupMany({
+        from: Nutrition.collection.name,
+        field: "nutritionTags",
+        fields: ["_id", "name"],
+      }),
+      {
+        $lookup: {
+          from: Meals.collection.name,
+          localField: "mealType",
+          foreignField: "_id",
+          as: "__meal",
+        },
+      },
+      {
+        $addFields: {
+          ...recipeDocumentDefaults,
+          mealTypeName: { $arrayElemAt: ["$__meal.name", 0] },
+        },
+      },
+      { $project: { __meal: 0 } },
+    ]);
 
     if (!recipe) {
       return sendResponse({
@@ -151,7 +213,7 @@ const downloadRecipePdf = async (req, res) => {
 
       prepTime: `${recipe.prepTime}`,
 
-      mealType: recipe.mealType,
+      mealType: recipe.mealTypeName,
 
       stage: recipe.babyStage
         ? {
@@ -179,9 +241,13 @@ const downloadRecipePdf = async (req, res) => {
 
       instructions: recipe.method.map((step) => ({
         step: step.step,
-
+        title: step.title || "",
         description: step.instruction,
       })),
+
+      feedingInsight: recipe.feedingInsight,
+
+      allergyReminder: recipe.allergyReminder,
 
       notes: recipe.notes,
 
@@ -194,7 +260,7 @@ const downloadRecipePdf = async (req, res) => {
 
     const relativePath = await savePdf(pdf, filename);
 
-    const pdfUrl = `${req.protocol}://${req.get("host")}${relativePath}`;
+    const pdfUrl = `${req.protocol}://${req.get("host")}/api${relativePath}`;
 
     void logActivity({
       user: req.user._id,
@@ -204,6 +270,7 @@ const downloadRecipePdf = async (req, res) => {
       module: "recipe",
       targetId: recipe._id,
       metadata: {
+        pdfPath: relativePath,
         recipeId: recipe._id,
         recipeTitle: recipe.title,
         mealType: recipe.mealType,
@@ -233,9 +300,15 @@ const downloadRecipePdf = async (req, res) => {
 
 const downloadGroceryPdf = async (req, res) => {
   try {
-    const grocery = await GroceryList.findOne({
-      user: req.user._id,
-    }).populate("recipes.recipe", "_id title image");
+    const castedQuery = GroceryList.find({ user: req.user._id }).cast(
+      GroceryList,
+    );
+
+    const [grocery] = await GroceryList.aggregate([
+      { $match: castedQuery },
+      { $limit: 1 },
+      ...groceryRecipeStages(),
+    ]);
 
     if (!grocery) {
       return sendResponse({
@@ -245,8 +318,6 @@ const downloadGroceryPdf = async (req, res) => {
       });
     }
 
-    ////////////////////////////////////////////
-
     const recipesIncluded = grocery.recipes.map((recipe) => ({
       recipeId: recipe.recipe._id,
 
@@ -254,8 +325,6 @@ const downloadGroceryPdf = async (req, res) => {
 
       image: recipe.recipe.image || "",
     }));
-
-    ////////////////////////////////////////////
 
     const groceryChecklist = [];
 
@@ -290,15 +359,11 @@ const downloadGroceryPdf = async (req, res) => {
       });
     });
 
-    ////////////////////////////////////////////
-
     const ingredientCategories = Object.keys(categoriesMap).map((category) => ({
       category,
 
       items: [...new Set(categoriesMap[category])],
     }));
-
-    ////////////////////////////////////////////
 
     const groceryResponse = {
       recipesIncluded,
@@ -312,7 +377,7 @@ const downloadGroceryPdf = async (req, res) => {
 
     const relativePath = await savePdf(pdf, `grocery-${req.user._id}.pdf`);
 
-    const pdfUrl = `${req.protocol}://${req.get("host")}${relativePath}`;
+    const pdfUrl = `${req.protocol}://${req.get("host")}/api${relativePath}`;
 
     void logActivity({
       user: req.user._id,
@@ -323,6 +388,7 @@ const downloadGroceryPdf = async (req, res) => {
       baby: grocery.baby || null,
       targetId: grocery._id,
       metadata: {
+        pdfPath: relativePath,
         recipes: grocery.recipes.length,
         ingredients: groceryChecklist.length,
       },
@@ -356,6 +422,10 @@ const getDownloadedPdfs = async (req, res) => {
 
     const validModules = ["recipe", "feeding_timetable", "grocery_list"];
     const baseMatch = { action: "download", module: { $in: validModules } };
+    // App users only see their own downloads; admins see everyone's (dashboard).
+    if (req.user.role !== "admin") {
+      baseMatch.user = new mongoose.Types.ObjectId(String(req.user._id));
+    }
 
     const pipeline = [
       { $match: baseMatch },
@@ -486,6 +556,9 @@ const getDownloadedPdfs = async (req, res) => {
                 userEmail: { $ifNull: ["$userDoc.email", "—"] },
                 downloadedAt: "$createdAt",
                 pdfPath: "$metadata.pdfPath",
+                recipeId: "$metadata.recipeId",
+                recipeTitle: "$metadata.recipeTitle",
+                date: "$metadata.date",
                 countries: {
                   $map: {
                     input: "$countryDocs",
@@ -527,7 +600,7 @@ const getDownloadedPdfs = async (req, res) => {
       ...row,
       typeLabel: typeLabels[row.type] || row.type,
       pdfUrl: row.pdfPath
-        ? `${req.protocol}://${req.get("host")}${row.pdfPath}`
+        ? `${req.protocol}://${req.get("host")}/api${row.pdfPath}`
         : null,
     }));
 

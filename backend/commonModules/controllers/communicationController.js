@@ -1,4 +1,3 @@
-// communicationController.js
 const {
   sendEmailViaSgrid,
   sendEmailViaAwsSes,
@@ -7,7 +6,7 @@ const {
 } = require("@utils/emailUtil");
 const { Devices } = require("@models/Devices");
 const { sendResponse, validateParams } = require("@utils/responseUtil");
-const adminFireBConfig = require("@config/firebaseAdmin"); // Firebase admin SDK setup
+const adminFireBConfig = require("@config/firebaseAdmin");
 const { registrationOtpEmailTemplate } = require("@utils/emailTemplates");
 const { NotificationExp } = require("@models/Notifications");
 const { Vonage } = require("@vonage/server-sdk");
@@ -20,7 +19,6 @@ const { Vonage } = require("@vonage/server-sdk");
 const sendEmailSgrid = async (req, res) => {
   const { title, emails, subject, body, config } = req.body;
 
-  // Validate required parameters
   const validationOptions = {
     bodyParams: ["title", "emails", "subject", "body"],
   };
@@ -54,7 +52,6 @@ const sendEmailSgrid = async (req, res) => {
 const sendEmailAws = async (req, res) => {
   const { title, emails, subject, body, config } = req.body;
 
-  // Validate required parameters
   const validationOptions = {
     bodyParams: ["title", "emails", "subject", "body"],
   };
@@ -86,7 +83,6 @@ const sendEmailAws = async (req, res) => {
  */
 const sendEmailBrevo = async (req, res) => {
   const { title, emails, subject, body, config } = req.body;
-  // Validate required parameters
   const validationOptions = {
     bodyParams: ["title", "emails", "subject", "body"],
   };
@@ -115,7 +111,6 @@ const sendEmailBrevo = async (req, res) => {
 const sendSmsViaPinpointAws = async (req, res) => {
   const { phoneNumber, otp } = req.body;
 
-  // Validate required parameters
   if (!phoneNumber || !otp) {
     return sendResponse({
       res,
@@ -151,7 +146,6 @@ const sendSmsViaPinpointAws = async (req, res) => {
 const sendNotificationControllerForTesting = async (req, res) => {
   const { recipients, title, body, data } = req.body;
 
-  // Validate required parameters
   const validationOptions = {
     bodyParams: ["recipients", "title", "body"],
   };
@@ -161,38 +155,24 @@ const sendNotificationControllerForTesting = async (req, res) => {
   }
 
   try {
-    // Placeholder for notification sending logic
-    // This can be expanded to handle different titles of notifications like SMS, Push, etc.
-    // console.log(`Sending ${title} notification to: ${recipients.join(", ")}`);
-    // console.log(`body: ${body}`);
 
-    // Simulate sending notification
-    const response = await sendNotification(recipients, {
+    const results = await sendNotification(recipients, {
       title: title,
       body: body,
-      data: data,
+      data: toFcmData(data || {}),
     });
 
-    const successIds = [];
-    const failureIds = [];
-
-    response.responses.forEach((resp, idx) => {
-      if (resp.success) {
-        successIds.push(recipients[idx]);
-      } else {
-        failureIds.push({
-          ...recipients[idx],
-          error: resp.error ? resp.error.message : "Unknown error",
-        });
-      }
-    });
+    const successIds = results.filter((r) => r.success).map((r) => r.token);
+    const failureIds = results
+      .filter((r) => !r.success)
+      .map((r) => ({ token: r.token, error: r.errorCode || "Unknown error" }));
 
     if (successIds.length > 0) {
       return sendResponse({
         res,
         statusCode: 200,
-        translationKey: "notifications_sent_success", // Use the success translation key
-        values: { title }, // Pass the dynamic title
+        translationKey: "notifications_sent_success",
+        values: { title },
         data: {
           successIds,
           failureIds,
@@ -202,8 +182,8 @@ const sendNotificationControllerForTesting = async (req, res) => {
       return sendResponse({
         res,
         statusCode: 500,
-        translationKey: "notifications_sent_failure", // Use the success translation key
-        values: { title }, // Pass the dynamic title
+        translationKey: "notifications_sent_failure",
+        values: { title },
         data: {
           successIds,
           failureIds,
@@ -220,103 +200,90 @@ const sendNotificationControllerForTesting = async (req, res) => {
   }
 };
 
-/**
- * Sends a notification to multiple users based on their user IDs.
- *
- * @param {Object} param0 - Object containing recipientIds (array), title (string), body (string), and optional data (object).
- */
+/** FCM `data` payloads only accept string values. */
+const toFcmData = (data) =>
+  Object.fromEntries(
+    Object.entries(data).map(([k, v]) => [
+      k,
+      v == null ? "" : typeof v === "string" ? v : String(v),
+    ]),
+  );
 
+const isFirebaseReady = () => adminFireBConfig.apps.length > 0;
+
+// FCM error codes meaning the token will never work again.
+const DEAD_TOKEN_CODES = [
+  "messaging/registration-token-not-registered",
+  "messaging/invalid-registration-token",
+  "messaging/invalid-argument",
+];
+
+/**
+ * Saves an in-app notification for each recipient and pushes it to their registered devices.
+ * The in-app notification is stored even when push fails (no devices, Firebase not configured, bad tokens).
+ *
+ * @param {Object} param0 - recipientIds (array), title, body, optional data / sender / objectId.
+ */
 const sendUserNotifications = async ({
   recipientIds,
   title,
   body,
   data = {},
-  sender = null, // Optional: sender ID
-  objectId = null, // Optional: object ID
-  saveNotification = true, // send false if you don't want to save notification in db
+  sender = null,
+  objectId = null,
+  saveNotification = true,
 }) => {
   setImmediate(async () => {
     try {
-      // Fetch devices for all the user IDs
+      if (saveNotification) {
+        await NotificationExp.insertMany(
+          recipientIds.map((receiverId) => ({
+            type: data.type || "system",
+            subjectId: sender,
+            objectId,
+            objectType: data.objectType,
+            receiverId,
+            title,
+            body,
+          })),
+        );
+      }
+
+      if (!isFirebaseReady()) {
+        console.warn("Push skipped — Firebase Admin is not configured.");
+        return;
+      }
+
       const recipientDevices = await Devices.find({
         userId: { $in: recipientIds },
       }).select("userId devices");
 
-      // Check if recipientDevices exist
-      if (recipientDevices && recipientDevices.length > 0) {
-        // Flatten the devices array and associate it with the userId
-        const flattenedDevices = recipientDevices.flatMap((userDevice) =>
-          userDevice.devices.map((device) => ({
-            userId: userDevice.userId,
-            deviceId: device.deviceId,
-            deviceType: device.deviceType,
-          })),
-        );
+      const pushData = toFcmData({
+        ...data,
+        subjectId: sender,
+        objectId,
+      });
 
-        // Group devices by userId and ensure no duplicate device IDs
-        const devicesByUser = flattenedDevices.reduce((acc, device) => {
-          if (!acc[device.userId]) {
-            acc[device.userId] = new Set(); // Use Set to avoid duplicate device IDs
-          }
-          acc[device.userId].add(device); // Add device to Set (duplicates are automatically filtered out)
-          return acc;
-        }, {});
-        // Prepare responses array to track sending status
-        const responses = [];
-
-        // Send notifications and gather responses
-        for (const userId in devicesByUser) {
-          const userDevices = Array.from(devicesByUser[userId]).map(
-            (device) => ({
-              deviceId: device.deviceId,
-              deviceType: device.deviceType,
-            }),
-          ); // Convert Set to Array and include deviceType
-
-          // Send notifications without awaiting
-          const sendNotificationPromise = sendNotification(userDevices, {
+      for (const userDevice of recipientDevices) {
+        if (!userDevice.devices.length) continue;
+        try {
+          const results = await sendNotification(userDevice.devices, {
             title,
             body,
-            data: {
-              ...data, // Additional data payload
-              subjectId: sender ? sender.toString() : null, // Convert subjectId to plain text
-              objectId: objectId.toString(), // Ensure objectId is also plain text
-            },
+            data: pushData,
           });
-
-          const sendNotificationResponse = await sendNotificationPromise;
-          responses.push({ userId, sendNotificationResponse });
+          const deadTokens = results
+            .filter((r) => !r.success && DEAD_TOKEN_CODES.includes(r.errorCode))
+            .map((r) => r.token);
+          if (deadTokens.length) {
+            await Devices.updateOne(
+              { _id: userDevice._id },
+              { $pull: { devices: { deviceId: { $in: deadTokens } } } },
+            );
+          }
+        } catch (error) {
+          console.error(`Push to user ${userDevice.userId} failed:`, error.message);
         }
-
-        console.log(data);
-
-        responses.forEach((response) => {
-          console.log(
-            `Response for user ${response.userId}:`,
-            JSON.stringify(response.sendNotificationResponse, null, 2),
-          );
-        });
-
-        // Process the notifications after sending them
-        if (!saveNotification) {
-          return;
-        }
-
-        // Once all notifications are sent, prepare notifications to save
-        const notificationsToSave = responses.map(({ userId }) => ({
-          type: data.type || "system", // Assign a default type if not provided
-          subjectId: sender,
-          objectId: objectId,
-          objectType: data.objectType,
-          receiverId: userId,
-          title,
-          body,
-        }));
-
-        // Save all notifications in a batch to the database
-        await NotificationExp.insertMany(notificationsToSave);
-      } else {
-        console.log("No devices found for the provided user IDs.");
       }
     } catch (error) {
       console.error("Error sending notifications in background:", error);
@@ -324,102 +291,49 @@ const sendUserNotifications = async ({
   });
 };
 
+/**
+ * Sends one push to every device; returns `{ token, success, errorCode }` per device.
+ */
 const sendNotification = async (recipients, payload) => {
-  const androidTokens = [];
-  const iosTokens = [];
-
-  // Separate Android and iOS tokens
+  const byPlatform = { android: [], ios: [] };
   recipients.forEach((recipient) => {
-    if (recipient.deviceType === "android") {
-      androidTokens.push(recipient.deviceId);
-    } else if (recipient.deviceType === "ios") {
-      iosTokens.push(recipient.deviceId);
+    if (recipient.deviceId && byPlatform[recipient.deviceType]) {
+      byPlatform[recipient.deviceType].push(recipient.deviceId);
     }
   });
 
-  // Notification payload for Android
-  const androidPayload = {
-    notification: {
-      title: payload.title,
-      body: payload.body,
+  const notification = { title: payload.title, body: payload.body };
+  const messages = {
+    android: {
+      notification,
+      data: payload.data,
+      android: { priority: "high", notification: { sound: "default" } },
     },
-    data: payload.data,
+    ios: {
+      notification,
+      data: payload.data,
+      apns: { payload: { aps: { sound: "default", badge: 1 } } },
+    },
   };
 
-  // Notification payload for iOS
-  const iosPayload = {
-    notification: {
-      title: payload.title,
-      body: payload.body,
-    },
-    apns: {
-      payload: {
-        aps: {
-          alert: {
-            title: payload.title,
-            body: payload.body,
-          },
-          sound: "default", // Use default sound on iOS
-          badge: 1, // Optional: set the badge number on the app icon
-        },
-      },
-    },
-    data: payload.data, // Optional: add custom data for iOS
-  };
-
-  try {
-    const promises = [];
-
-    // Send to Android devices
-    if (androidTokens.length > 0) {
-      const androidPromise = adminFireBConfig.messaging().sendEachForMulticast({
-        tokens: androidTokens,
-        ...androidPayload,
-      });
-      promises.push(androidPromise);
-    }
-
-    // Send to iOS devices
-    if (iosTokens.length > 0) {
-      const iosPromise = adminFireBConfig.messaging().sendEachForMulticast({
-        tokens: iosTokens,
-        ...iosPayload,
-      });
-      promises.push(iosPromise);
-    }
-
-    const responses = await Promise.all(promises);
-
-    // // Log the response of each promise with a message
-    // responses.forEach((response, index) => {
-    //   console.log(`Response from promise ${index + 1}:`, response);
-    //   if (response.failureCount > 0) {
-    //     response.responses.forEach((resp, idx) => {
-    //       if (!resp.success) {
-    //         console.error(
-    //           `Failure message from promise ${index + 1}, response ${idx + 1}:`,
-    //           resp.error
-    //         );
-    //       }
-    //     });
-    //   }
-    // });
-
-    const result = {
-      responses: [],
-    };
-
-    responses.forEach((response) => {
-      result.responses = result.responses.concat(response.responses);
-    });
-    return result;
-  } catch (error) {
-    console.error("Error sending notifications:", error);
-    throw error;
+  const results = [];
+  for (const platform of ["android", "ios"]) {
+    const tokens = byPlatform[platform];
+    if (!tokens.length) continue;
+    const response = await adminFireBConfig
+      .messaging()
+      .sendEachForMulticast({ tokens, ...messages[platform] });
+    response.responses.forEach((r, i) =>
+      results.push({
+        token: tokens[i],
+        success: r.success,
+        errorCode: r.error?.code,
+      }),
+    );
   }
+  return results;
 };
 
-// Initialize the Vonage client with your credentials
 const vonage = new Vonage({
   apiKey: process.env.VONAGE_API_KEY,
   apiSecret: process.env.VONAGE_API_SECRET,
@@ -428,7 +342,6 @@ const vonage = new Vonage({
 const sendSmsViaVonage = async (req, res) => {
   const { phoneNumber, otp } = req.body;
 
-  // Validate required parameters
   if (!phoneNumber || !otp) {
     return sendResponse({
       res,
@@ -440,16 +353,14 @@ const sendSmsViaVonage = async (req, res) => {
 
   try {
     const otpMessage = `${otp} is your OTP for the ZahraPay App`;
-    const from = "+921234567890"; // Replace with your Vonage virtual number
+    const from = "+921234567890";
 
-    // Send SMS using Nexmo's API (Vonage)
     const messageData = {
       to: phoneNumber,
       from: from,
       text: otpMessage,
     };
 
-    // Send the message via Nexmo (Vonage) SDK
     vonage.sms.send(messageData, (err, responseData) => {
       console.log("Entered the callback function");
       if (err) {
@@ -505,7 +416,6 @@ const sendSMSSomalianAPI = async (req, res) => {
   const { phoneNumber, otp } = req.body;
   const message = `Your OTP is ${otp}`;
 
-  // Validate required parameters
   if (!phoneNumber || !otp) {
     return sendResponse({
       res,
@@ -516,17 +426,14 @@ const sendSMSSomalianAPI = async (req, res) => {
   }
 
   try {
-    const apiKey = "07098f01-6071-4045-abd8-63a7ec3e25ac"; // Replace with your actual API Key
-    const apiSecret = "5810f9db-bd8e-4002-ab57-721ab0d8ee1e"; // Replace with your actual API Secret
+    const apiKey = "07098f01-6071-4045-abd8-63a7ec3e25ac";
+    const apiSecret = "5810f9db-bd8e-4002-ab57-721ab0d8ee1e";
 
-    // Combine API credentials
     const accountApiCredentials = `${apiKey}:${apiSecret}`;
 
-    // Convert credentials to base64
     const buff = Buffer.from(accountApiCredentials);
     const base64Credentials = buff.toString("base64");
 
-    // Set the request headers, including the Authorization header
     const requestHeaders = {
       headers: {
         Authorization: `Basic ${base64Credentials}`,
@@ -534,17 +441,15 @@ const sendSMSSomalianAPI = async (req, res) => {
       },
     };
 
-    // Construct the request data (the SMS content and destination number)
     const requestData = JSON.stringify({
       messages: [
         {
-          content: message, // Message content
-          destination: phoneNumber, // Destination phone number
+          content: message,
+          destination: phoneNumber,
         },
       ],
     });
 
-    // Send the POST request to the API endpoint
     const response = await axios.post(
       "https://rest.mymobileapi.com/bulkmessages",
       requestData,

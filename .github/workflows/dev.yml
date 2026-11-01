@@ -1,0 +1,112 @@
+name: CI/CD for Dev Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      rollback:
+        description: "Roll back to the previous release instead of deploying"
+        type: boolean
+        default: false
+  push:
+    branches:
+      - dev # Run the workflow on every commit to the 'dev' branch
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+env:
+  DEPLOY_DIR: backend-dev
+  PM2_APP_NAME: backend-server-dev
+  PM2_ENV: dev
+  PORT: 4001
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          EC2_KEY: ${{ secrets.EC2_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$EC2_KEY" > ~/.ssh/ec2_key.pem
+          chmod 600 ~/.ssh/ec2_key.pem
+
+          # Prefer a pinned host key; fall back to scanning it
+          if [ -n "$EC2_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$EC2_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$EC2_HOST" > ~/.ssh/known_hosts
+          fi
+
+          cat > ~/.ssh/config <<EOF
+          Host ec2
+            HostName $EC2_HOST
+            User $EC2_USER
+            IdentityFile ~/.ssh/ec2_key.pem
+            ServerAliveInterval 30
+            ServerAliveCountMax 10
+          EOF
+
+      - name: Install Node.js, PM2 and Nginx if not installed
+        run: |
+          ssh ec2 '
+            set -e
+            if ! command -v npm >/dev/null 2>&1; then
+              curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+            fi
+
+            if ! command -v pm2 >/dev/null 2>&1; then
+              sudo npm install -g pm2
+            fi
+
+            if ! command -v nginx >/dev/null 2>&1; then
+              sudo apt-get update -y
+              sudo apt-get install -y nginx
+              sudo systemctl enable nginx
+              sudo systemctl start nginx
+            fi
+
+            node -v
+            npm -v
+            pm2 -v
+          '
+
+      # Each deploy goes into its own releases/<id> folder; server-only files (including the env file) live in
+      # shared/ on the server and are never touched by a deploy. deploy/release.sh links them in, installs, switches `current` and reloads pm2.
+      - name: Upload release
+        if: ${{ !inputs.rollback }}
+        run: |
+          RELEASE="$(date -u +%Y%m%d%H%M%S)-${GITHUB_SHA::7}"
+          echo "RELEASE=$RELEASE" >> "$GITHUB_ENV"
+          ssh ec2 "mkdir -p ~/$DEPLOY_DIR/releases/$RELEASE ~/$DEPLOY_DIR/shared"
+          # Unchanged files are hard-linked from the live release, so only changes are transferred.
+          rsync -az \
+            --link-dest="../../current/" \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude 'node_modules/' \
+            --exclude '.env*' \
+            --exclude 'logs/' \
+            --exclude 'uploads*' \
+            --exclude 'backend/secretAssets/' \
+            --exclude 'secrets/' \
+            ./ ec2:~/$DEPLOY_DIR/releases/$RELEASE/
+
+      - name: Activate release
+        if: ${{ !inputs.rollback }}
+        run: |
+          ssh ec2 "bash ~/$DEPLOY_DIR/releases/$RELEASE/deploy/release.sh activate \$HOME/$DEPLOY_DIR $RELEASE $PM2_ENV $PM2_APP_NAME $PORT && pm2 list"
+
+      - name: Roll back to the previous release
+        if: ${{ inputs.rollback }}
+        run: |
+          ssh ec2 "bash ~/$DEPLOY_DIR/current/deploy/release.sh rollback \$HOME/$DEPLOY_DIR $PM2_ENV $PM2_APP_NAME $PORT && pm2 list"

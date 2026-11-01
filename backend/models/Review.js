@@ -14,13 +14,13 @@ const reviewSchema = new mongoose.Schema(
         },
         subject: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: "User", // Reference to the User who wrote the review
+            ref: "User",
             required: true,
         },
         rating: {
             type: Number,
             min: 1,
-            max: 5, // Rating should be between 1 and 5
+            max: 5,
             required: true,
         },
         comment: {

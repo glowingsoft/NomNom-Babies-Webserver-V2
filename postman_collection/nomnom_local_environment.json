@@ -4,7 +4,7 @@
   "values": [
     {
       "key": "url",
-      "value": "http://localhost:4001/api",
+      "value": "http://localhost:4001/api/",
       "enabled": true
     },
     {
@@ -29,6 +29,46 @@
     },
     {
       "key": "otp",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "resetToken",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "babyId",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "recipeId",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "sendgridApiKey",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "sendgridSenderEmail",
+      "value": "hello@nomnombabies.com",
+      "enabled": true
+    },
+    {
+      "key": "testEmail",
+      "value": "",
+      "enabled": true
+    },
+    {
+      "key": "uploadedFile",
       "value": "",
       "enabled": true
     }
